@@ -6,7 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
-import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -18,8 +18,6 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_CODEX_VERSION = "0.163.0"
-DEFAULT_T3_VERSION = "0.1.1"
 T3_PORT = 3773
 
 
@@ -27,10 +25,9 @@ T3_PORT = 3773
 class Config:
     codex_home: Path
     t3_home: Path
-    bin_dir: Path
+    bench_dir: Path
     project_dir: Path
-    codex_version: str = DEFAULT_CODEX_VERSION
-    t3_version: str = DEFAULT_T3_VERSION
+    frappe_branch: str = "version-16"
 
     @property
     def runtime_dir(self):
@@ -43,23 +40,15 @@ class Config:
 
 
 def config_from_environment():
-    versions = {
-        "codex_version": os.getenv("FRAPPE_CODEX_VERSION") or DEFAULT_CODEX_VERSION,
-        "t3_version": os.getenv("FRAPPE_T3_VERSION") or DEFAULT_T3_VERSION,
-    }
-    for name, version in versions.items():
-        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?", version):
-            raise ValueError(
-                f"{name} must be an exact release version, got {version!r}"
-            )
+    bench_dir = Path(
+        os.getenv("FRAPPE_BENCH_DIR") or "/workspace/development/frappe-bench"
+    ).resolve()
     return Config(
         codex_home=Path(os.getenv("CODEX_HOME") or Path.home() / ".codex").resolve(),
         t3_home=Path(os.getenv("T3CODE_HOME") or Path.home() / ".t3").resolve(),
-        bin_dir=Path.home() / ".local" / "bin",
-        project_dir=Path(
-            os.getenv("FRAPPE_T3_PROJECT_DIR") or "/workspace/development"
-        ).resolve(),
-        **versions,
+        bench_dir=bench_dir,
+        project_dir=Path(os.getenv("FRAPPE_T3_PROJECT_DIR") or bench_dir).resolve(),
+        frappe_branch=os.getenv("FRAPPE_BENCH_BRANCH") or "version-16",
     )
 
 
@@ -81,123 +70,55 @@ def lifecycle_lock(config):
         yield
 
 
-def binary_version(binary):
-    if not binary.is_file() or not os.access(binary, os.X_OK):
-        return None
-    try:
-        result = subprocess.run(
-            [str(binary), "--version"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    words = result.stdout.strip().split()
-    if result.returncode == 0 and words:
-        return words[-1].lstrip("v")
-    return None
-
-
-def cached_tool(config, name):
-    if name == "t3":
-        root = config.t3_home / "runtime" / "versions" / config.t3_version
+def ensure_bench(config):
+    """Initialize a missing Bench, preserving an existing development workspace."""
+    if config.bench_dir.exists():
         required = [
-            root / "t3",
-            root / "client" / "index.html",
-            root / "resource-monitor",
-            root / "node_modules",
+            config.bench_dir / "apps" / "frappe",
+            config.bench_dir / "sites" / "apps.txt",
+            config.bench_dir / "env" / "bin" / "python",
         ]
-        binary = root / "t3"
-        version = config.t3_version
-    else:
-        root = config.codex_home / "packages" / "standalone" / "current"
-        required = [
-            root / "codex-package.json",
-            root / "bin" / "codex",
-            root / "bin" / "codex-code-mode-host",
-            root / "codex-resources" / "bwrap",
-            root / "codex-path" / "rg",
-        ]
-        binary = root / "bin" / "codex"
-        version = config.codex_version
-    if all(path.exists() for path in required) and binary_version(binary) == version:
-        return binary
-    return None
-
-
-def restore_launcher(config, name, binary):
-    """Restore only our launcher, leaving Bench's .local/bin entries intact."""
-    config.bin_dir.mkdir(parents=True, exist_ok=True)
-    link = config.bin_dir / name
-    temporary = config.bin_dir / f".{name}-{os.getpid()}"
-    temporary.unlink(missing_ok=True)
-    temporary.symlink_to(binary)
-    temporary.replace(link)
-
-
-def install_tool(config, name):
-    version = config.t3_version if name == "t3" else config.codex_version
-    if name == "t3":
-        url = f"https://raw.githubusercontent.com/pingdotgg/t3code/v{version}/scripts/install.sh"
-    else:
-        url = f"https://raw.githubusercontent.com/openai/codex/rust-v{version}/scripts/install/install.sh"
-    installers = config.t3_home / "devcontainer" / "installers"
-    installers.mkdir(parents=True, exist_ok=True)
-    installer = installers / f"{name}-{version}.sh"
-    if not installer.exists():
-        temporary = installer.with_suffix(".download")
+        if not all(path.exists() for path in required):
+            raise RuntimeError(
+                f"{config.bench_dir} exists but is not an initialized Bench; "
+                "complete or repair it before running setup"
+            )
+        return
+    config.bench_dir.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "bench",
+            "init",
+            "--skip-redis-config-generation",
+            "--frappe-branch",
+            config.frappe_branch,
+            str(config.bench_dir),
+        ],
+        cwd=config.bench_dir.parent,
+        check=True,
+    )
+    for key, value in (
+        ("db_host", "mariadb"),
+        ("redis_cache", "redis://redis-cache:6379"),
+        ("redis_queue", "redis://redis-queue:6379"),
+        ("redis_socketio", "redis://redis-queue:6379"),
+    ):
         subprocess.run(
-            [
-                "curl",
-                "--fail",
-                "--silent",
-                "--show-error",
-                "--location",
-                "--retry",
-                "3",
-                "--connect-timeout",
-                "10",
-                "--max-time",
-                "120",
-                url,
-                "--output",
-                str(temporary),
-            ],
+            ["bench", "set-config", "-g", key, value],
+            cwd=config.bench_dir,
             check=True,
         )
-        temporary.chmod(0o700)
-        temporary.replace(installer)
-    environment = os.environ.copy()
-    environment.update(
-        CODEX_HOME=str(config.codex_home),
-        CODEX_INSTALL_DIR=str(config.bin_dir),
-        CODEX_NON_INTERACTIVE="1",
-        T3CODE_HOME=str(config.t3_home),
-        T3CODE_INSTALL_BIN_DIR=str(config.bin_dir),
-        T3CODE_VERSION=config.t3_version,
+    subprocess.run(
+        ["bench", "set-config", "-gp", "developer_mode", "1"],
+        cwd=config.bench_dir,
+        check=True,
     )
-    arguments = ["sh", str(installer)]
-    if name == "codex":
-        arguments.extend(["--release", version])
-    else:
-        # The upstream installer uses this marker to skip an extracted release.
-        # A missing package component must trigger extraction again.
-        marker = config.t3_home / "runtime" / "versions" / version / ".install-complete"
-        marker.unlink(missing_ok=True)
-    subprocess.run(arguments, env=environment, check=True)
 
 
-def ensure_tools(config, install=False):
-    for name in ("codex", "t3"):
-        binary = cached_tool(config, name)
-        if binary is None and install:
-            install_tool(config, name)
-            binary = cached_tool(config, name)
-        if binary is None:
-            raise RuntimeError(f"{name} is incomplete; run agent_tools.py setup first")
-        restore_launcher(config, name, binary)
+def ensure_tools():
+    missing = [name for name in ("codex", "t3") if not shutil.which(name)]
+    if missing:
+        raise RuntimeError("Agent tools are missing; run agent_tools.py setup first")
 
 
 def seed_codex_auth(config):
@@ -225,9 +146,15 @@ def setup(config):
     for path in (config.codex_home, config.t3_home):
         prepare_directory(path)
     with lifecycle_lock(config):
-        ensure_tools(config, install=True)
+        ensure_bench(config)
+        subprocess.run(
+            ["npm", "install", "--global", "@openai/codex", "t3"],
+            cwd=config.bench_dir,
+            check=True,
+        )
+        ensure_tools()
         seed_codex_auth(config)
-    print(f"Agent tools ready: Codex {config.codex_version}, T3 {config.t3_version}")
+    print("Bench, Codex and T3 are ready")
 
 
 def process_start_time(pid):
@@ -288,7 +215,7 @@ def terminate_process(pid):
 
 def start(config):
     with lifecycle_lock(config):
-        ensure_tools(config)
+        ensure_tools()
         if managed_process(config):
             if not server_ready(config):
                 raise RuntimeError(
@@ -311,11 +238,10 @@ def start(config):
             config.log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
         )
         environment = os.environ.copy()
-        environment["PATH"] = f"{config.bin_dir}:{environment.get('PATH', '')}"
         with os.fdopen(descriptor, "ab", buffering=0) as log:
             process = subprocess.Popen(
                 [
-                    str(config.bin_dir / "t3"),
+                    shutil.which("t3"),
                     "start",
                     "--base-dir",
                     str(config.t3_home),

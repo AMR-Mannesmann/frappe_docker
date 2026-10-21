@@ -6,7 +6,7 @@ title: Use Agent Tools in a Devcontainer
 
 Use the existing Bench image with optional T3 Code and Codex tools installed by Dev Container lifecycle hooks. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
-You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root and follow the [development setup](../05-development/01-development.md) for Bench and site creation.
+You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The agent setup initializes a missing Bench; follow the [development setup](../05-development/01-development.md) for additional applications and site creation.
 
 ## Enable agent tools
 
@@ -44,7 +44,15 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
    In VS Code, use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when enabling agents in an existing one. Reopening an existing container alone does not apply the new volumes, environment, and published port.
 
-On creation, the hooks preserve the existing pre-commit installation and install pinned native Codex and T3 distributions. On each Dev Container start, they restore the launchers and start one T3 server. The normal development configuration does not install or start these tools unless the agents overlay is enabled.
+On creation, the hooks preserve the existing pre-commit installation, initialize a missing development Bench, and configure it to use the Compose database and Redis services. They then run this command from the Bench directory:
+
+```sh
+npm install --global @openai/codex t3
+```
+
+The packages use npm's current releases, without version pins. Global installation makes the commands available through the Bench image's existing Node environment. Each new container installs the tools again automatically; the Bench checkout and agent state remain persistent. On each Dev Container start, the hook starts one T3 server.
+
+An existing initialized Bench is reused without changing its applications or service settings. An incomplete existing directory is reported for repair rather than overwritten. The normal development configuration does not initialize a Bench or install agent tools unless the agents overlay is enabled.
 
 Use Dev Containers to create and resume the environment. Plain `docker compose up` or `docker restart` does not execute Dev Container lifecycle hooks.
 
@@ -55,7 +63,7 @@ devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version
 devcontainer exec --workspace-folder . python /workspace/development/agent_tools.py status
 ```
 
-T3 starts with `/workspace/development` as its project directory; you can add your Bench or application projects once they exist. Project registration and settings persist with the environment.
+T3 starts with `/workspace/development/frappe-bench` as its project directory. You can add individual application projects as well. Project registration and settings persist with the environment.
 
 For the initial browser connection, mint a short-lived pairing link in your own terminal:
 
@@ -92,11 +100,13 @@ The source is mounted read-only and copied only when the container has no `auth.
 
 The example does not mount your host T3 home, transfer host settings, or share credentials between stacks. Each stack retains its own environment identity and sessions.
 
-## Configure versions and trust
+## Configure the Bench and trust
 
-The first version pair is Codex `0.163.0` and T3 `0.1.1`. Override `FRAPPE_CODEX_VERSION` or `FRAPPE_T3_VERSION` in `.devcontainer/.env` with an exact release version, then recreate the devcontainer. The version's official installer must support the native distribution layout. Installers are fetched from the corresponding release tags, and verify their release downloads.
+Set `FRAPPE_BENCH_DIR` in `.devcontainer/.env` to select the Bench directory. It defaults to `/workspace/development/frappe-bench`. `FRAPPE_BENCH_BRANCH` selects the Frappe branch for a new Bench and defaults to `version-16`; it does not switch branches in an existing Bench. The initial Bench contains Frappe, with developer mode enabled. Sites and additional applications remain separate setup steps.
 
-Set `FRAPPE_T3_PROJECT_DIR` to another existing container directory to register that directory on startup. Keep paths stable when recreating a stack.
+T3 uses the Bench directory unless `FRAPPE_T3_PROJECT_DIR` selects another existing container directory. Keep paths stable when recreating a stack. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
+
+To update the tools in a running container, run `npm install --global @openai/codex t3` again and restart the managed T3 process.
 
 For a corporate CA, add a private Compose override that mounts your certificate files and arrange for `sudo update-ca-certificates` to run before the network-dependent `postCreateCommand` steps. Configure the Node or Codex CA bundle when required by those clients. Keep company certificates and credentials in your local configuration or private repository.
 
@@ -106,6 +116,6 @@ For a corporate CA, add a private Compose override that mounts your certificate 
 devcontainer up --workspace-folder . --remove-existing-container
 ```
 
-Compose keeps Codex state in `codex-data` and the complete T3 home in `t3-data`, scoped to the Compose project. This preserves authentication caches, provider sessions, T3 identity, threads, settings, and managed worktrees. The hooks recreate the executable launchers outside those volumes, leaving Bench's existing executables available.
+Compose keeps Codex state in `codex-data` and the complete T3 home in `t3-data`, scoped to the Compose project. This preserves authentication caches, provider sessions, T3 identity, threads, settings, and managed worktrees. The Bench stays in the mounted workspace, and the creation hook reinstalls the npm tools into the new container.
 
 Keep your workspace checkout and database volume as well. Removing volumes, changing the Compose project name, or deleting the checkout can disconnect existing state from its files. Back up persistent data separately; container recreation is not a backup operation. An active agent turn is interrupted when its container stops.

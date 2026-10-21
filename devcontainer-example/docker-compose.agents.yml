@@ -3,9 +3,9 @@ services:
   frappe:
     environment:
       FRAPPE_DEV_AGENTS: "1"
-      FRAPPE_CODEX_VERSION: ${FRAPPE_CODEX_VERSION:-}
-      FRAPPE_T3_VERSION: ${FRAPPE_T3_VERSION:-}
-      FRAPPE_T3_PROJECT_DIR: ${FRAPPE_T3_PROJECT_DIR:-/workspace/development}
+      FRAPPE_BENCH_DIR: ${FRAPPE_BENCH_DIR:-/workspace/development/frappe-bench}
+      FRAPPE_BENCH_BRANCH: ${FRAPPE_BENCH_BRANCH:-version-16}
+      FRAPPE_T3_PROJECT_DIR: ${FRAPPE_T3_PROJECT_DIR:-}
       CODEX_HOME: /home/frappe/.codex
       T3CODE_HOME: /home/frappe/.t3
     volumes:

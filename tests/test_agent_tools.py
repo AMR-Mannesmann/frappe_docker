@@ -22,7 +22,7 @@ class AgentToolsTests(unittest.TestCase):
         self.config = agent_tools.Config(
             codex_home=self.root / "codex",
             t3_home=self.root / "t3",
-            bin_dir=self.root / "bin",
+            bench_dir=self.root / "bench",
             project_dir=self.root,
         )
         runtime = mock.patch.object(
@@ -60,6 +60,36 @@ class AgentToolsTests(unittest.TestCase):
         destination = self.config.codex_home / "auth.json"
         self.assertEqual(json.loads(destination.read_text()), initial)
         self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
+
+    def test_partial_bench_is_preserved_and_reported(self):
+        self.config.bench_dir.mkdir()
+        marker = self.config.bench_dir / "unfinished-work"
+        marker.write_text("keep this")
+        with self.assertRaisesRegex(RuntimeError, "not an initialized Bench"):
+            agent_tools.ensure_bench(self.config)
+        self.assertEqual(marker.read_text(), "keep this")
+
+    def test_existing_bench_configuration_is_preserved(self):
+        (self.config.bench_dir / "apps" / "frappe").mkdir(parents=True)
+        (self.config.bench_dir / "env" / "bin").mkdir(parents=True)
+        (self.config.bench_dir / "env" / "bin" / "python").touch()
+        sites = self.config.bench_dir / "sites"
+        sites.mkdir()
+        (sites / "apps.txt").write_text("frappe\n")
+        custom = sites / "common_site_config.json"
+        custom.write_text('{"db_host": "custom-database"}')
+        with mock.patch.object(subprocess, "run") as command:
+            agent_tools.ensure_bench(self.config)
+            command.assert_not_called()
+        self.assertEqual(json.loads(custom.read_text())["db_host"], "custom-database")
+
+    def test_failed_bench_initialization_prevents_npm_installation(self):
+        error = subprocess.CalledProcessError(1, ["bench", "init"])
+        with mock.patch.object(subprocess, "run", side_effect=error) as command:
+            with self.assertRaises(subprocess.CalledProcessError):
+                agent_tools.setup(self.config)
+        self.assertEqual(command.call_count, 1)
+        self.assertEqual(command.call_args.args[0][:2], ["bench", "init"])
 
     def test_stop_does_not_signal_a_recycled_pid(self):
         child = subprocess.Popen(
