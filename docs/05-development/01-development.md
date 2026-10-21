@@ -68,6 +68,8 @@ Notes:
 - The `development` directory is ignored by git. It is mounted and available inside the container. Create all your benches (installations of bench, the tool that manages frappe) inside this directory.
 - Node v14 and v10 are installed. Check with `nvm ls`. Node v14 is used by default.
 
+To install optional T3 Code and Codex tools through devcontainer lifecycle hooks, follow [Use agent tools in a devcontainer](../11-how-to/13-use-agent-devcontainer.md).
+
 ### Setup first bench
 
 > Jump to [scripts](#setup-bench--new-site-using-script) section to setup a bench automatically. Alternatively, you can setup a bench manually using below guide.

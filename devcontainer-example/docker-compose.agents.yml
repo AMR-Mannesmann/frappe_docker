@@ -1,0 +1,20 @@
+# Opt in by adding this file after docker-compose.yml in devcontainer.json.
+services:
+  frappe:
+    environment:
+      FRAPPE_DEV_AGENTS: "1"
+      FRAPPE_CODEX_VERSION: ${FRAPPE_CODEX_VERSION:-}
+      FRAPPE_T3_VERSION: ${FRAPPE_T3_VERSION:-}
+      FRAPPE_T3_PROJECT_DIR: ${FRAPPE_T3_PROJECT_DIR:-/workspace/development}
+      CODEX_HOME: /home/frappe/.codex
+      T3CODE_HOME: /home/frappe/.t3
+    volumes:
+      - codex-data:/home/frappe/.codex
+      - t3-data:/home/frappe/.t3
+    ports:
+      - "127.0.0.1:${FRAPPE_T3_PORT:-3774}:3773"
+
+# Compose scopes these volumes to the project; each stack keeps its own state.
+volumes:
+  codex-data:
+  t3-data:

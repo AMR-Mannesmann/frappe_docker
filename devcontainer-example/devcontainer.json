@@ -68,7 +68,12 @@
   "service": "frappe",
   "workspaceFolder": "/workspace/development",
   "shutdownAction": "stopCompose",
-  "postCreateCommand": "uv tool install pre-commit",
+  "postCreateCommand": "uv tool install pre-commit && python /workspace/development/agent_tools.py setup",
+  "postStartCommand": [
+    "python",
+    "/workspace/development/agent_tools.py",
+    "start"
+  ],
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/frappe/.ssh,type=bind,consistency=cached"
   ]

@@ -1,0 +1,12 @@
+# Optional: seed an empty container auth cache from an existing host login.
+services:
+  frappe:
+    environment:
+      FRAPPE_CODEX_AUTH_SOURCE: /run/frappe-codex-auth.json
+    volumes:
+      - type: bind
+        source: ${FRAPPE_CODEX_AUTH_FILE:?Set FRAPPE_CODEX_AUTH_FILE to an existing auth.json}
+        target: /run/frappe-codex-auth.json
+        read_only: true
+        bind:
+          create_host_path: false
