@@ -4,50 +4,23 @@ title: Use Agent Tools in a Devcontainer
 
 # Use T3 Code and Codex in the development container
 
-Use the existing Bench image with optional T3 Code and Codex tools installed by Dev Container lifecycle hooks. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
+The development template installs T3 Code and Codex through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
 You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
 
-## Enable agent tools
+## Set up the devcontainer
+
+The template already includes the agent Compose configuration and waits for T3 startup. Copying it is enough to enable the workflow; no JSON edits are needed. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`.
+
+To choose different apps, names or ports, set them in `.devcontainer/.env` as described under [Customize the setup](#customize-the-setup) before starting. That section also covers corporate CA configuration, which must be applied before the first container creation when required by your network.
 
 1. Copy the development configuration if you do not already have one:
 
    ```sh
-   cp -R devcontainer-example .devcontainer
+   [ -d .devcontainer ] || cp -R devcontainer-example .devcontainer
    ```
 
-2. In `.devcontainer/devcontainer.json`, replace `dockerComposeFile` and add `waitFor`:
-
-   ```json
-   {
-     "dockerComposeFile": ["docker-compose.yml", "docker-compose.agents.yml"],
-     "waitFor": "postStartCommand"
-   }
-   ```
-
-   Keep the other properties, including `postCreateCommand` and `postStartCommand`. If you have an older copy, bring these properties and the additional Compose files across from `devcontainer-example`.
-
-3. Create `.devcontainer/.env` from the example if it does not already exist:
-
-   ```sh
-   [ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
-   ```
-
-   Edit the settings below. For an existing stack, retain its Compose project name and host port. For a new stack, choose a unique project name and an available port:
-
-   ```dotenv
-   COMPOSE_PROJECT_NAME=frappe-dev-a
-   FRAPPE_T3_PORT=3774
-   FRAPPE_APPS_JSON=../.devcontainer/apps.json
-   FRAPPE_BENCH_NAME=my-bench
-   FRAPPE_SITE_NAME=my-app.localhost
-   ```
-
-   Create the selected apps JSON before starting the container. For example, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`; the example above selects the file in `.devcontainer` at the repository root.
-
-   Reuse that project name when recreating this stack. Each parallel stack needs its own project name, source checkout, and host port. The container port remains `3773`; the published port listens on the host's loopback interface.
-
-4. Create or recreate the environment:
+2. Create or recreate the environment:
 
    ```sh
    devcontainer up --workspace-folder . --remove-existing-container
@@ -71,7 +44,7 @@ When omitted from `.env`, the three installer settings default to `apps-example.
 
 The generated constraints file keeps pre-commit's installation from replacing dependencies already installed for Frappe and your apps. It is regenerated from the selected Bench, and the dependency check must pass before npm runs.
 
-The npm packages use current releases, without version pins. Each new container installs them again automatically. The normal development configuration does not run the installer or install agent tools unless the agents overlay is enabled.
+The npm packages use current releases, without version pins. Each new container installs them again automatically.
 
 `postStartCommand` enters the configured Bench, activates its Python environment and starts T3 directly with `nohup`, using `flock` to keep one server for this environment. Agents inherit the Bench environment, including pre-commit. The hook waits for the HTTP endpoint before completing.
 
@@ -118,6 +91,26 @@ The source is mounted read-only and copied only when the container has no `auth.
 The example does not mount your host T3 home, transfer host settings, or share credentials between stacks. Each stack retains its own environment identity and sessions.
 
 ## Customize the setup
+
+The defaults work without an `.env` file. To customize them, create `.devcontainer/.env` from the example if it does not already exist:
+
+```sh
+[ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
+```
+
+For example:
+
+```dotenv
+COMPOSE_PROJECT_NAME=frappe-dev-a
+FRAPPE_T3_PORT=3774
+FRAPPE_APPS_JSON=../.devcontainer/apps.json
+FRAPPE_BENCH_NAME=my-bench
+FRAPPE_SITE_NAME=my-app.localhost
+```
+
+Create the selected apps JSON before starting the container. For example, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`; the example above selects the file in `.devcontainer` at the repository root.
+
+For an existing stack, retain its Compose project name and host port. Each parallel stack needs its own project name, source checkout, and host port. The container port remains `3773`; the published port listens on the host's loopback interface.
 
 Set these values in `.devcontainer/.env`; the Compose overlay passes them into the container and the lifecycle hook passes them to the existing installer:
 

@@ -64,7 +64,7 @@
       }
     }
   },
-  "dockerComposeFile": "./docker-compose.yml",
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.agents.yml"],
   "service": "frappe",
   "workspaceFolder": "/workspace/development",
   "shutdownAction": "stopCompose",
@@ -80,5 +80,6 @@
   ],
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/frappe/.ssh,type=bind,consistency=cached"
-  ]
+  ],
+  "waitFor": "postStartCommand"
 }

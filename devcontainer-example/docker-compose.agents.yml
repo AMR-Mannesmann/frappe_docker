@@ -1,4 +1,4 @@
-# Opt in by adding this file after docker-compose.yml in devcontainer.json.
+# Included by devcontainer.json after the base Compose configuration.
 services:
   frappe:
     environment:
