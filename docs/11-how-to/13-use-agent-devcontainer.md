@@ -27,12 +27,23 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
    Keep the other properties, including `postCreateCommand` and `postStartCommand`. If you have an older copy, bring these properties and the additional Compose files across from `devcontainer-example`.
 
-3. Create `.devcontainer/.env` with a unique Compose project name and an available host port:
+3. Create `.devcontainer/.env` from the example if it does not already exist:
+
+   ```sh
+   [ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
+   ```
+
+   Edit the settings below. For an existing stack, retain its Compose project name and host port. For a new stack, choose a unique project name and an available port:
 
    ```dotenv
    COMPOSE_PROJECT_NAME=frappe-dev-a
    FRAPPE_T3_PORT=3774
+   FRAPPE_APPS_JSON=../.devcontainer/apps.json
+   FRAPPE_BENCH_NAME=my-bench
+   FRAPPE_SITE_NAME=my-app.localhost
    ```
+
+   Create the selected apps JSON before starting the container. For example, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`; the example above selects the file in `.devcontainer` at the repository root.
 
    Reuse that project name when recreating this stack. Each parallel stack needs its own project name, source checkout, and host port. The container port remains `3773`; the published port listens on the host's loopback interface.
 
@@ -44,20 +55,25 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
    In VS Code, use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when enabling agents in an existing one. Reopening an existing container alone does not apply the new volumes, environment, and published port.
 
-The ordered setup commands are in `devcontainer-example/devcontainer.json`. After the existing pre-commit installation, `postCreateCommand` runs:
+The ordered setup commands are in `devcontainer-example/devcontainer.json`. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment and installs the npm tools:
 
 ```sh
 cd /workspace/development
-python installer.py
-cd frappe-bench
+python installer.py --apps-json "$FRAPPE_APPS_JSON" --bench-name "$FRAPPE_BENCH_NAME" --site-name "$FRAPPE_SITE_NAME"
+cd "$FRAPPE_BENCH_NAME"
+uv pip freeze --python env/bin/python --exclude-editable > env/pre-commit-constraints.txt
+uv pip install --python env/bin/python --constraint env/pre-commit-constraints.txt pre-commit
+uv pip check --python env/bin/python
 npm install --global @openai/codex t3
 ```
 
-For a fresh workspace, the installer uses its normal defaults: `frappe-bench`, `development.localhost`, and applications from `apps-example.json`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before npm runs; repair an incomplete site before retrying.
+When omitted from `.env`, the three installer settings default to `apps-example.json`, `frappe-bench`, and `development.localhost`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before the tool installations; repair an incomplete site before retrying.
+
+The generated constraints file keeps pre-commit's installation from replacing dependencies already installed for Frappe and your apps. It is regenerated from the selected Bench, and the dependency check must pass before npm runs.
 
 The npm packages use current releases, without version pins. Each new container installs them again automatically. The normal development configuration does not run the installer or install agent tools unless the agents overlay is enabled.
 
-`postStartCommand` starts T3 directly with `nohup`, using `flock` to keep one server for this environment. It waits for the HTTP endpoint before completing. These are standard shell commands in the devcontainer configuration.
+`postStartCommand` enters the configured Bench, activates its Python environment and starts T3 directly with `nohup`, using `flock` to keep one server for this environment. Agents inherit the Bench environment, including pre-commit. The hook waits for the HTTP endpoint before completing.
 
 Use Dev Containers to create and resume the environment. Plain `docker compose up` or `docker restart` does not execute Dev Container lifecycle hooks.
 
@@ -65,10 +81,11 @@ Use Dev Containers to create and resume the environment. Plain `docker compose u
 
 ```sh
 devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version'
+devcontainer exec --workspace-folder . sh -c '"/workspace/development/$FRAPPE_BENCH_NAME/env/bin/pre-commit" --version'
 devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3773/
 ```
 
-T3 starts with `/workspace/development/frappe-bench` as its project directory. You can add individual application projects as well. Project registration and settings persist with the environment.
+T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory. You can add individual application projects as well. Project registration and settings persist with the environment.
 
 For the initial browser connection, mint a short-lived pairing link in your own terminal:
 
@@ -102,7 +119,17 @@ The example does not mount your host T3 home, transfer host settings, or share c
 
 ## Customize the setup
 
-Edit the `python installer.py` command in `postCreateCommand` to pass the usual installer arguments, such as `--apps-json`, `--bench-name`, `--site-name`, or `--frappe-branch`. Prepare your apps JSON before creating the container. If you change the Bench name, update both the following `cd` command and the directory in `postStartCommand` to match.
+Set these values in `.devcontainer/.env`; the Compose overlay passes them into the container and the lifecycle hook passes them to the existing installer:
+
+| Setting             | Installer argument | Default                 |
+| ------------------- | ------------------ | ----------------------- |
+| `FRAPPE_APPS_JSON`  | `--apps-json`      | `apps-example.json`     |
+| `FRAPPE_BENCH_NAME` | `--bench-name`     | `frappe-bench`          |
+| `FRAPPE_SITE_NAME`  | `--site-name`      | `development.localhost` |
+
+Keep the Bench name relative to `/workspace/development`. Its value is used by both lifecycle hooks, so changing it does not require editing their directory paths. Other installer options, such as `--frappe-branch` or `--db-type`, can still be added directly to the installer command in `postCreateCommand`.
+
+Apply configuration changes by recreating the container. These are creation inputs: changing the apps JSON does not change an existing Bench's applications, and changing a Bench or site name selects a different directory or site rather than renaming existing data.
 
 T3 uses the Bench directory as its initial project. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
 
