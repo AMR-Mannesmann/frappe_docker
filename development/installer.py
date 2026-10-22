@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import subprocess
 
@@ -142,18 +143,18 @@ def init_bench_if_not_exist(args):
             "-c",
             init_command,
         ]
-        subprocess.call(command, env=env, cwd=os.getcwd())
+        subprocess.check_call(command, env=env, cwd=os.getcwd())
         cprint("Configuring Bench ...", level=2)
         cprint("Set db_host", level=3)
         if args.db_type:
             cprint(f"Setting db_type to {args.db_type}", level=3)
-            subprocess.call(
+            subprocess.check_call(
                 ["bench", "set-config", "-g", "db_type", args.db_type],
                 cwd=os.path.join(os.getcwd(), args.bench_name),
             )
 
         cprint("Set redis_cache to redis://redis-cache:6379", level=3)
-        subprocess.call(
+        subprocess.check_call(
             [
                 "bench",
                 "set-config",
@@ -164,7 +165,7 @@ def init_bench_if_not_exist(args):
             cwd=os.getcwd() + "/" + args.bench_name,
         )
         cprint("Set redis_queue to redis://redis-queue:6379", level=3)
-        subprocess.call(
+        subprocess.check_call(
             [
                 "bench",
                 "set-config",
@@ -178,7 +179,7 @@ def init_bench_if_not_exist(args):
             "Set redis_socketio to redis://redis-queue:6379 for backward compatibility",  # noqa: E501
             level=3,
         )
-        subprocess.call(
+        subprocess.check_call(
             [
                 "bench",
                 "set-config",
@@ -189,18 +190,37 @@ def init_bench_if_not_exist(args):
             cwd=os.getcwd() + "/" + args.bench_name,
         )
         cprint("Set developer_mode", level=3)
-        subprocess.call(
+        subprocess.check_call(
             ["bench", "set-config", "-gp", "developer_mode", "1"],
             cwd=os.getcwd() + "/" + args.bench_name,
         )
-    except subprocess.CalledProcessError as e:
-        cprint(e.output, level=1)
+    except subprocess.CalledProcessError:
+        cprint("Bench initialization failed", level=1)
+        raise
 
 
 def create_site_in_bench(args):
+    bench_path = os.path.join(os.getcwd(), args.bench_name)
+    apps = os.listdir(os.path.join(bench_path, "apps"))
+    if os.path.isdir(os.path.join(args.bench_name, "sites", args.site_name)):
+        installed_apps = json.loads(
+            subprocess.check_output(
+                ["bench", "--site", args.site_name, "list-apps", "--format", "json"],
+                cwd=bench_path,
+                text=True,
+            )
+        )[args.site_name]
+        missing_apps = sorted(set(apps) - set(installed_apps))
+        if missing_apps:
+            raise RuntimeError(
+                f"Existing site {args.site_name} is missing apps: {', '.join(missing_apps)}. "
+                "Repair the site before rerunning the installer."
+            )
+        cprint(f"Site {args.site_name} already exists. Skipping creation", level=3)
+        return
     if "mariadb" == args.db_type:
         cprint("Set db_host", level=3)
-        subprocess.call(
+        subprocess.check_call(
             ["bench", "set-config", "-g", "db_host", "mariadb"],
             cwd=os.getcwd() + "/" + args.bench_name,
         )
@@ -216,7 +236,7 @@ def create_site_in_bench(args):
         ]
     else:
         cprint("Set db_host", level=3)
-        subprocess.call(
+        subprocess.check_call(
             ["bench", "set-config", "-g", "db_host", "postgresql"],
             cwd=os.getcwd() + "/" + args.bench_name,
         )
@@ -229,13 +249,12 @@ def create_site_in_bench(args):
             f"--db-root-password=123",  # Replace with your PostgreSQL password
             f"--admin-password={args.admin_password}",
         ]
-    apps = os.listdir(f"{os.getcwd()}/{args.bench_name}/apps")
     apps.remove("frappe")
     for app in apps:
         new_site_cmd.append(f"--install-app={app}")
     new_site_cmd.append(args.site_name)
     cprint(f"Creating Site {args.site_name} ...", level=2)
-    subprocess.call(
+    subprocess.check_call(
         new_site_cmd,
         cwd=os.getcwd() + "/" + args.bench_name,
     )

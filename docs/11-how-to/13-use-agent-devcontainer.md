@@ -6,7 +6,7 @@ title: Use Agent Tools in a Devcontainer
 
 Use the existing Bench image with optional T3 Code and Codex tools installed by Dev Container lifecycle hooks. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
-You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The agent setup initializes a missing Bench; follow the [development setup](../05-development/01-development.md) for additional applications and site creation.
+You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
 
 ## Enable agent tools
 
@@ -44,15 +44,20 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
    In VS Code, use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when enabling agents in an existing one. Reopening an existing container alone does not apply the new volumes, environment, and published port.
 
-On creation, the hooks preserve the existing pre-commit installation, initialize a missing development Bench, and configure it to use the Compose database and Redis services. They then run this command from the Bench directory:
+The ordered setup commands are in `devcontainer-example/devcontainer.json`. After the existing pre-commit installation, `postCreateCommand` runs:
 
 ```sh
+cd /workspace/development
+python installer.py
+cd frappe-bench
 npm install --global @openai/codex t3
 ```
 
-The packages use npm's current releases, without version pins. Global installation makes the commands available through the Bench image's existing Node environment. Each new container installs the tools again automatically; the Bench checkout and agent state remain persistent. On each Dev Container start, the hook starts one T3 server.
+For a fresh workspace, the installer uses its normal defaults: `frappe-bench`, `development.localhost`, and applications from `apps-example.json`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before npm runs; repair an incomplete site before retrying.
 
-An existing initialized Bench is reused without changing its applications or service settings. An incomplete existing directory is reported for repair rather than overwritten. The normal development configuration does not initialize a Bench or install agent tools unless the agents overlay is enabled.
+The npm packages use current releases, without version pins. Each new container installs them again automatically. The normal development configuration does not run the installer or install agent tools unless the agents overlay is enabled.
+
+`postStartCommand` starts T3 directly with `nohup`, using `flock` to keep one server for this environment. It waits for the HTTP endpoint before completing. These are standard shell commands in the devcontainer configuration.
 
 Use Dev Containers to create and resume the environment. Plain `docker compose up` or `docker restart` does not execute Dev Container lifecycle hooks.
 
@@ -60,7 +65,7 @@ Use Dev Containers to create and resume the environment. Plain `docker compose u
 
 ```sh
 devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version'
-devcontainer exec --workspace-folder . python /workspace/development/agent_tools.py status
+devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3773/
 ```
 
 T3 starts with `/workspace/development/frappe-bench` as its project directory. You can add individual application projects as well. Project registration and settings persist with the environment.
@@ -75,12 +80,7 @@ The printed link uses the container's address and port. Replace its origin with 
 
 T3 startup output is stored in `/home/frappe/.t3/devcontainer/server.log` with private file permissions. It can contain pairing credentials; read it only in your own terminal when connecting a client.
 
-To restart the managed T3 process without recreating the container:
-
-```sh
-devcontainer exec --workspace-folder . python /workspace/development/agent_tools.py stop
-devcontainer exec --workspace-folder . python /workspace/development/agent_tools.py start
-```
+To restart T3, restart the devcontainer through Dev Containers. To reinstall or update the npm tools, recreate the container; its persistent data is retained.
 
 ## Authenticate Codex
 
@@ -100,13 +100,11 @@ The source is mounted read-only and copied only when the container has no `auth.
 
 The example does not mount your host T3 home, transfer host settings, or share credentials between stacks. Each stack retains its own environment identity and sessions.
 
-## Configure the Bench and trust
+## Customize the setup
 
-Set `FRAPPE_BENCH_DIR` in `.devcontainer/.env` to select the Bench directory. It defaults to `/workspace/development/frappe-bench`. `FRAPPE_BENCH_BRANCH` selects the Frappe branch for a new Bench and defaults to `version-16`; it does not switch branches in an existing Bench. The initial Bench contains Frappe, with developer mode enabled. Sites and additional applications remain separate setup steps.
+Edit the `python installer.py` command in `postCreateCommand` to pass the usual installer arguments, such as `--apps-json`, `--bench-name`, `--site-name`, or `--frappe-branch`. Prepare your apps JSON before creating the container. If you change the Bench name, update both the following `cd` command and the directory in `postStartCommand` to match.
 
-T3 uses the Bench directory unless `FRAPPE_T3_PROJECT_DIR` selects another existing container directory. Keep paths stable when recreating a stack. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
-
-To update the tools in a running container, run `npm install --global @openai/codex t3` again and restart the managed T3 process.
+T3 uses the Bench directory as its initial project. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
 
 For a corporate CA, add a private Compose override that mounts your certificate files and arrange for `sudo update-ca-certificates` to run before the network-dependent `postCreateCommand` steps. Configure the Node or Codex CA bundle when required by those clients. Keep company certificates and credentials in your local configuration or private repository.
 

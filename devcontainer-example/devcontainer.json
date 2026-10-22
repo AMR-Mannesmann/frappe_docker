@@ -68,11 +68,15 @@
   "service": "frappe",
   "workspaceFolder": "/workspace/development",
   "shutdownAction": "stopCompose",
-  "postCreateCommand": "uv tool install pre-commit && python /workspace/development/agent_tools.py setup",
+  "postCreateCommand": [
+    "bash",
+    "-ec",
+    "uv tool install pre-commit\nif [ \"$FRAPPE_DEV_AGENTS\" = 1 ]; then\n  sudo chown -R \"$(id -u):$(id -g)\" \"$CODEX_HOME\" \"$T3CODE_HOME\"\n  cd /workspace/development\n  python installer.py\n  cd frappe-bench\n  npm install --global @openai/codex t3\n  if [ -f /run/frappe-codex-auth.json ] && [ ! -e \"$CODEX_HOME/auth.json\" ]; then\n    (umask 077; cp -n /run/frappe-codex-auth.json \"$CODEX_HOME/auth.json\")\n  fi\nfi"
+  ],
   "postStartCommand": [
-    "python",
-    "/workspace/development/agent_tools.py",
-    "start"
+    "bash",
+    "-ec",
+    "if [ \"$FRAPPE_DEV_AGENTS\" = 1 ]; then\n  umask 077\n  mkdir -p \"$T3CODE_HOME/devcontainer\"\n  cd /workspace/development/frappe-bench\n  nohup flock -n \"$T3CODE_HOME/devcontainer/server.lock\" t3 start --base-dir \"$T3CODE_HOME\" --host 0.0.0.0 --port 3773 --no-browser --auto-bootstrap-project-from-cwd >> \"$T3CODE_HOME/devcontainer/server.log\" 2>&1 < /dev/null &\n  timeout 30 bash -c 'until curl --noproxy \"*\" -fs -o /dev/null http://127.0.0.1:3773/; do sleep 1; done'\nfi"
   ],
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/frappe/.ssh,type=bind,consistency=cached"
