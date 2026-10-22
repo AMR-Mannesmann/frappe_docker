@@ -26,11 +26,12 @@ The steps below include choosing the apps, names and ports for your stack in `.d
    [ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
    ```
 
-   Choose the Compose project name, host ports, apps JSON, Bench name and site name. For example:
+   Choose the Compose project name, host ports, T3 channel, apps JSON, Bench name and site name. For example:
 
    ```dotenv
    COMPOSE_PROJECT_NAME=frappe-dev-a
    FRAPPE_T3_PORT=3774
+   FRAPPE_T3_CHANNEL=latest
    FRAPPE_HTTP_PORT=8000
    FRAPPE_REALTIME_PORT=9000
    FRAPPE_APPS_JSON=../.devcontainer/apps.json
@@ -77,7 +78,7 @@ uv pip install --python env/bin/python --constraint env/pre-commit-constraints.t
 uv pip check --python env/bin/python
 sudo apt-get update
 sudo apt-get install --yes --no-install-recommends gh glab
-npm install --global @openai/codex t3
+npm install --global @openai/codex "t3@${FRAPPE_T3_CHANNEL:-latest}"
 t3 --version
 npx --yes skills add frappe/skills --global --agent codex --skill '*' --yes --copy
 npx --yes skills add https://github.com/frappe/frappe-ui/tree/main/skills/frappe-ui --global --agent codex --yes --copy
@@ -89,7 +90,7 @@ The generated constraints file keeps pre-commit's installation from replacing de
 
 The creation hook configures internal ports `8000` and `9000`, including the web command's port argument in the Procfile. Other Procfile entries are retained. The site advertises the published realtime port to the browser, keeping realtime connections working when parallel stacks use different host ports.
 
-The npm packages use current releases, without version pins. Each new container installs them again automatically. The version check also completes T3's first native-runtime download before the startup hook's readiness deadline.
+The npm packages use current releases, without version pins. T3 defaults to the stable `latest` npm channel. Set `FRAPPE_T3_CHANNEL=nightly` in `.devcontainer/.env` to install `t3@nightly` instead. Each new container resolves the current release on the selected channel and installs it automatically. Recreate the container to apply a channel change. The version check also completes T3's first native-runtime download before the startup hook's readiness deadline.
 
 `postStartCommand` enters the configured Bench, activates its Python environment, registers the Bench with `t3 project add`, and runs `t3 serve`. An already-registered project is retained. The commands run in their own session with `nohup` and `setsid`, using `flock` to keep one server for this environment. This lets the server keep running when the setup terminal closes. Native project registration and headless serving also handle stale runtime records after container recreation. Agents inherit the Bench environment, including pre-commit. The hook waits for runtime metadata and the HTTP endpoint before completing.
 

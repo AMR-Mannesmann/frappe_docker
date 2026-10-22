@@ -7,6 +7,7 @@ services:
       FRAPPE_APPS_JSON: ${FRAPPE_APPS_JSON:-apps-example.json}
       FRAPPE_BENCH_NAME: ${FRAPPE_BENCH_NAME:-frappe-bench}
       FRAPPE_SITE_NAME: ${FRAPPE_SITE_NAME:-development.localhost}
+      FRAPPE_T3_CHANNEL: ${FRAPPE_T3_CHANNEL:-latest}
       FRAPPE_HTTP_PORT: ${FRAPPE_HTTP_PORT:-8000}
       FRAPPE_REALTIME_PORT: ${FRAPPE_REALTIME_PORT:-9000}
       CODEX_HOME: /home/frappe/.codex
