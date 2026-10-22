@@ -4,7 +4,7 @@ title: Use Agent Tools in a Devcontainer
 
 # Use T3 Code and Codex in the development container
 
-The development template installs T3 Code and Codex through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
+The development template installs T3 Code, Codex, GitHub CLI (`gh`) and GitLab CLI (`glab`) through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
 You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
 
@@ -48,7 +48,7 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    In VS Code, use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when enabling agents in an existing one. Reopening an existing container alone does not apply the new volumes, environment, and published port.
 
-The ordered setup commands are in `devcontainer-example/devcontainer.json`. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment and installs the npm tools:
+The ordered setup commands are in `devcontainer-example/devcontainer.json`. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment, the GitHub/GitLab CLIs from the image's Debian package repositories, and the npm tools:
 
 ```sh
 cd /workspace/development
@@ -57,6 +57,8 @@ cd "$FRAPPE_BENCH_NAME"
 uv pip freeze --python env/bin/python --exclude-editable > env/pre-commit-constraints.txt
 uv pip install --python env/bin/python --constraint env/pre-commit-constraints.txt pre-commit
 uv pip check --python env/bin/python
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends gh glab
 npm install --global @openai/codex t3
 ```
 
@@ -66,25 +68,27 @@ The generated constraints file keeps pre-commit's installation from replacing de
 
 The npm packages use current releases, without version pins. Each new container installs them again automatically.
 
-`postStartCommand` enters the configured Bench, activates its Python environment and starts T3 directly with `nohup`, using `flock` to keep one server for this environment. Agents inherit the Bench environment, including pre-commit. The hook waits for the HTTP endpoint before completing.
+`postStartCommand` enters the configured Bench, activates its Python environment, registers the Bench with `t3 project add`, and runs `t3 serve`. An already-registered project is retained. The commands run in their own session with `nohup` and `setsid`, using `flock` to keep one server for this environment. This lets the server keep running when the setup terminal closes. Native project registration and headless serving also handle stale runtime records after container recreation. Agents inherit the Bench environment, including pre-commit. The hook waits for runtime metadata and the HTTP endpoint before completing.
 
 Use Dev Containers to create and resume the environment. Plain `docker compose up` or `docker restart` does not execute Dev Container lifecycle hooks.
 
 ## Check the environment
 
 ```sh
-devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version'
+devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version && gh --version && glab --version'
 devcontainer exec --workspace-folder . sh -c '"/workspace/development/$FRAPPE_BENCH_NAME/env/bin/pre-commit" --version'
 devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3773/
 ```
 
 T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory. You can add individual application projects as well. Project registration and settings persist with the environment.
 
-For the initial browser connection, mint a short-lived pairing link in your own terminal:
+T3 is started automatically during setup. For the initial browser connection, mint a short-lived pairing link in your own terminal:
 
 ```sh
 devcontainer exec --workspace-folder . t3 pair
 ```
+
+`NoRunningServerError` means the server failed to start or has stopped; it is not an additional manual startup step. Check the HTTP endpoint above and the private server log below if it occurs.
 
 The printed link uses the container's address and port. Replace its origin with `http://127.0.0.1:3774`, using your selected host port, and preserve the complete `/pair#token=...` suffix. Open that link on the Docker host. When adding this environment to another T3 client, use the host's reachable endpoint and the pairing token. A bare URL has no pairing credential, and the printed container-address QR code does not account for Docker port mapping.
 
@@ -109,6 +113,17 @@ Alternatively, seed the container from an existing file-based host login:
 The source is mounted read-only and copied only when the container has no `auth.json`. The container's private copy remains writable for token refresh; subsequent setup preserves it. A host OS keyring is not exposed by mounting a file. If a copied login stops working after another client refreshes or revokes it, sign in separately or explicitly renew the seed. See [Codex authentication](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
 
 The example does not mount your host T3 home, transfer host settings, or share credentials between stacks. Each stack retains its own environment identity and sessions.
+
+## Authenticate GitHub and GitLab
+
+Both CLIs are installed automatically. Sign in to the services you use:
+
+```sh
+devcontainer exec --workspace-folder . gh auth login
+devcontainer exec --workspace-folder . glab auth login --hostname gitlab.example.com
+```
+
+Replace `gitlab.example.com` with your GitLab hostname. CLI configuration and file-based logins persist in project-scoped `github-cli-data` and `gitlab-cli-data` volumes, mounted at `/home/frappe/.config/gh` and `/home/frappe/.config/glab-cli` respectively. These are separate from Codex authentication.
 
 ## Customize the setup
 
@@ -135,5 +150,7 @@ devcontainer up --workspace-folder . --remove-existing-container
 ```
 
 Compose keeps Codex state in `codex-data` and the complete T3 home in `t3-data`, scoped to the Compose project. This preserves authentication caches, provider sessions, T3 identity, threads, settings, and managed worktrees. The Bench stays in the mounted workspace, and the creation hook reinstalls the npm tools into the new container.
+
+GitHub and GitLab CLI configuration is retained in their own volumes, and the creation hook reinstalls both CLI packages. When updating an existing configuration, recreate the container to apply the new mounts and environment variables.
 
 Keep your workspace checkout and database volume as well. Removing volumes, changing the Compose project name, or deleting the checkout can disconnect existing state from its files. Back up persistent data separately; container recreation is not a backup operation. An active agent turn is interrupted when its container stops.

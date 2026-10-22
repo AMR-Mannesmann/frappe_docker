@@ -8,9 +8,13 @@ services:
       FRAPPE_SITE_NAME: ${FRAPPE_SITE_NAME:-development.localhost}
       CODEX_HOME: /home/frappe/.codex
       T3CODE_HOME: /home/frappe/.t3
+      GH_CONFIG_DIR: /home/frappe/.config/gh
+      GLAB_CONFIG_DIR: /home/frappe/.config/glab-cli
     volumes:
       - codex-data:/home/frappe/.codex
       - t3-data:/home/frappe/.t3
+      - github-cli-data:/home/frappe/.config/gh
+      - gitlab-cli-data:/home/frappe/.config/glab-cli
     ports:
       - "127.0.0.1:${FRAPPE_T3_PORT:-3774}:3773"
 
@@ -18,3 +22,5 @@ services:
 volumes:
   codex-data:
   t3-data:
+  github-cli-data:
+  gitlab-cli-data:
