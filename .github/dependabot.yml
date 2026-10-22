@@ -1,26 +1,52 @@
 version: 2
+# Check every six hours, including weekends, without waiting for releases to age.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      interval: cron
+      cronjob: "0 */6 * * *"
+    cooldown:
+      exclude:
+        - "*"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: docker
-    directory: images/bench
+    directories:
+      - /images/bench
+      - /images/production
+      - /images/custom
     schedule:
-      interval: daily
-
-  - package-ecosystem: docker
-    directory: images/production
-    schedule:
-      interval: daily
-
-  - package-ecosystem: docker
-    directory: images/custom
-    schedule:
-      interval: daily
+      interval: cron
+      cronjob: "0 */6 * * *"
+    cooldown:
+      exclude:
+        - "*"
+    groups:
+      # Keep shared base images (for example Python) in sync across builds.
+      base-images:
+        group-by: dependency-name
+        patterns:
+          - "*"
 
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: daily
+      interval: cron
+      cronjob: "0 */6 * * *"
+    cooldown:
+      exclude:
+        - "*"
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
