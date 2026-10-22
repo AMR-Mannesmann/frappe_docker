@@ -80,7 +80,13 @@ devcontainer exec --workspace-folder . sh -c '"/workspace/development/$FRAPPE_BE
 devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3773/
 ```
 
-T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory. You can add individual application projects as well. Project registration and settings persist with the environment.
+T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory and uses the Compose project name, such as `frappe-dev-a`, as its initial title. Existing project titles are retained on subsequent starts, including any name you choose in T3. You can add individual application projects as well. Project registration and settings persist with the environment.
+
+To rename an already-registered Bench project without recreating it or its threads:
+
+```sh
+devcontainer exec --workspace-folder . bash -ec 't3 project rename "/workspace/development/$FRAPPE_BENCH_NAME" "my-stack"'
+```
 
 T3 is started automatically during setup. For the initial browser connection, mint a short-lived pairing link in your own terminal:
 
@@ -112,7 +118,19 @@ Alternatively, seed the container from an existing file-based host login:
 
 The source is mounted read-only and copied only when the container has no `auth.json`. The container's private copy remains writable for token refresh; subsequent setup preserves it. A host OS keyring is not exposed by mounting a file. If a copied login stops working after another client refreshes or revokes it, sign in separately or explicitly renew the seed. See [Codex authentication](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
 
-The example does not mount your host T3 home, transfer host settings, or share credentials between stacks. Each stack retains its own environment identity and sessions.
+The example does not mount your host T3 home or share credentials between stacks. Each stack retains its own environment identity and sessions. To apply preferences across environments, see [Reuse local T3 settings](#reuse-local-t3-settings).
+
+## Reuse local T3 settings
+
+Connecting the environment does not automatically copy the local machine's environment settings. In the T3 client with both environments connected:
+
+1. Open **Settings** and choose **All projects** and **All environments** in the **Applying settings for …** selector.
+2. Apply the preferences you want to use on both machines. A control showing **Mixed** means the selected environments currently have different values; choosing a value applies it to all of them.
+3. For a setting specific to this stack, select its environment or project before editing it.
+
+Selecting **All environments** alone does not copy existing values. Each edit is applied to the currently connected environments; this is not ongoing synchronization, and environments connected later keep their own values. The container's saved preferences persist in `t3-data` across recreation.
+
+Appearance, confirmations and other device preferences belong to the T3 client you are using. Providers and their authentication are configured per environment, so local provider paths and credentials need separate configuration. Each project's own overrides still take precedence over the shared environment defaults. See T3's [settings and project overrides](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md) for the setting scopes.
 
 ## Authenticate GitHub and GitLab
 
@@ -139,7 +157,7 @@ Keep the Bench name relative to `/workspace/development`. Its value is used by b
 
 Apply configuration changes by recreating the container. These are creation inputs: changing the apps JSON does not change an existing Bench's applications, and changing a Bench or site name selects a different directory or site rather than renaming existing data.
 
-T3 uses the Bench directory as its initial project. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
+T3 uses the Bench directory as its initial project and the Compose project name as the default display title. Rename the project in T3 to change that title; keep `COMPOSE_PROJECT_NAME` stable for an existing stack because it also selects its persistent volumes. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
 
 For a corporate CA, add a private Compose override that mounts your certificate files and arrange for `sudo update-ca-certificates` to run before the network-dependent `postCreateCommand` steps. Configure the Node or Codex CA bundle when required by those clients. Keep company certificates and credentials in your local configuration or private repository.
 

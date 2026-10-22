@@ -3,6 +3,7 @@ services:
   frappe:
     environment:
       FRAPPE_DEV_AGENTS: "1"
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
       FRAPPE_APPS_JSON: ${FRAPPE_APPS_JSON:-apps-example.json}
       FRAPPE_BENCH_NAME: ${FRAPPE_BENCH_NAME:-frappe-bench}
       FRAPPE_SITE_NAME: ${FRAPPE_SITE_NAME:-development.localhost}
