@@ -10,7 +10,7 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
 ## Set up the devcontainer
 
-The template already includes the agent Compose configuration and waits for T3 startup. Copying it is enough to enable the workflow; no JSON edits are needed. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`.
+The template already includes the agent Compose configuration and waits for T3 startup. Copying it is enough to enable the workflow; no JSON edits are needed. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. Start Bench to serve the created site, as shown in step 4.
 
 The steps below include choosing the apps, names and ports for your stack in `.devcontainer/.env`. If your network requires a corporate CA, apply the configuration under [Customize the setup](#customize-the-setup) before the first container creation.
 
@@ -26,17 +26,19 @@ The steps below include choosing the apps, names and ports for your stack in `.d
    [ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
    ```
 
-   Choose the Compose project name, host port, apps JSON, Bench name and site name. For example:
+   Choose the Compose project name, host ports, apps JSON, Bench name and site name. For example:
 
    ```dotenv
    COMPOSE_PROJECT_NAME=frappe-dev-a
    FRAPPE_T3_PORT=3774
+   FRAPPE_HTTP_PORT=8000
+   FRAPPE_REALTIME_PORT=9000
    FRAPPE_APPS_JSON=../.devcontainer/apps.json
    FRAPPE_BENCH_NAME=my-bench
    FRAPPE_SITE_NAME=my-app.localhost
    ```
 
-   Each parallel stack needs its own project name, source checkout and available host port. For an existing stack, retain its project name and port to keep using its state and connection address. The container port remains `3773`; the published port listens on the host's loopback interface.
+   Each parallel stack needs its own project name, source checkout and available host ports. For example, a second stack can use T3 port `3775`, web port `8001` and realtime port `9001`. For an existing stack, retain its project name and T3 port to keep using its state and connection address. Container ports remain `3773`, `8000` and `9000`; all published ports listen on the host's loopback interface.
 
    Prepare the selected apps JSON before starting. For the custom path above, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`. You can also keep `FRAPPE_APPS_JSON=apps-example.json` to use the provided application list. Keep defaults for any settings that already suit your project.
 
@@ -48,12 +50,28 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    In VS Code, use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when enabling agents in an existing one. Reopening an existing container alone does not apply the new volumes, environment, and published port.
 
+4. Start Frappe from a terminal in the repository root:
+
+   ```sh
+   devcontainer exec --workspace-folder . bash -lc 'cd "/workspace/development/$FRAPPE_BENCH_NAME" && bench start'
+   ```
+
+   Leave this command running while using the site. In a T3 terminal already at the Bench root, run `bench start` directly. Creation initializes the site; this command starts its web server, realtime server, workers, scheduler and asset watcher. Run it again after recreating or restarting the container.
+
+   Open `http://<FRAPPE_SITE_NAME>:<FRAPPE_HTTP_PORT>`. The defaults use [http://development.localhost:8000](http://development.localhost:8000); the sample `.env` above uses `http://my-app.localhost:8000`. Use the site's `.localhost` hostname so Frappe selects the correct site. Sign in as `Administrator` with the installer password (`admin` by default).
+
+   These are Docker-published ports and work with the CLI and T3. `forwardPorts` in `devcontainer.json` provides additional VS Code forwarding; it is not a replacement for Docker publishing when using the CLI alone.
+
 The ordered setup commands are in `devcontainer-example/devcontainer.json`. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment, the GitHub/GitLab CLIs from the image's Debian package repositories, and the npm tools:
 
 ```sh
 cd /workspace/development
 python installer.py --apps-json "$FRAPPE_APPS_JSON" --bench-name "$FRAPPE_BENCH_NAME" --site-name "$FRAPPE_SITE_NAME"
 cd "$FRAPPE_BENCH_NAME"
+bench set-config -gp webserver_port 8000
+bench set-config -gp socketio_port 9000
+sed -i -E '/^web:[[:space:]]+bench serve([[:space:]]|$)/s/(^|[[:space:]])--port([[:space:]]+|=)[0-9]+/\1--port 8000/' Procfile
+bench --site "$FRAPPE_SITE_NAME" set-config -p socketio_port "$FRAPPE_REALTIME_PORT"
 uv pip freeze --python env/bin/python --exclude-editable > env/pre-commit-constraints.txt
 uv pip install --python env/bin/python --constraint env/pre-commit-constraints.txt pre-commit
 uv pip check --python env/bin/python
@@ -68,6 +86,8 @@ npx --yes skills add https://github.com/frappe/frappe-ui/tree/main/skills/frappe
 When omitted from `.env`, the three installer settings default to `apps-example.json`, `frappe-bench`, and `development.localhost`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before the tool installations; repair an incomplete site before retrying.
 
 The generated constraints file keeps pre-commit's installation from replacing dependencies already installed for Frappe and your apps. It is regenerated from the selected Bench, and the dependency check must pass before npm runs.
+
+The creation hook configures internal ports `8000` and `9000`, including the web command's port argument in the Procfile. Other Procfile entries are retained. The site advertises the published realtime port to the browser, keeping realtime connections working when parallel stacks use different host ports.
 
 The npm packages use current releases, without version pins. Each new container installs them again automatically. The version check also completes T3's first native-runtime download before the startup hook's readiness deadline.
 
