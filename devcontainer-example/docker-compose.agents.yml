@@ -16,6 +16,7 @@ services:
       - t3-data:/home/frappe/.t3
       - github-cli-data:/home/frappe/.config/gh
       - gitlab-cli-data:/home/frappe/.config/glab-cli
+      - ../development/.agent-data:/home/frappe/.agents
       - type: bind
         source: ${FRAPPE_T3_SETTINGS_FILE:-./t3-settings.json}
         target: /run/frappe-t3-settings.json

@@ -4,7 +4,7 @@ title: Use Agent Tools in a Devcontainer
 
 # Use T3 Code and Codex in the development container
 
-The development template installs T3 Code, Codex, GitHub CLI (`gh`) and GitLab CLI (`glab`) through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
+The development template installs T3 Code, Codex, GitHub CLI (`gh`), GitLab CLI (`glab`), and the Frappe/Frappe UI agent skills through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
 You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
 
@@ -61,6 +61,8 @@ sudo apt-get update
 sudo apt-get install --yes --no-install-recommends gh glab
 npm install --global @openai/codex t3
 t3 --version
+npx --yes skills add frappe/skills --global --agent codex --skill '*' --yes --copy
+npx --yes skills add https://github.com/frappe/frappe-ui/tree/main/skills/frappe-ui --global --agent codex --yes --copy
 ```
 
 When omitted from `.env`, the three installer settings default to `apps-example.json`, `frappe-bench`, and `development.localhost`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before the tool installations; repair an incomplete site before retrying.
@@ -72,6 +74,16 @@ The npm packages use current releases, without version pins. Each new container 
 `postStartCommand` enters the configured Bench, activates its Python environment, registers the Bench with `t3 project add`, and runs `t3 serve`. An already-registered project is retained. The commands run in their own session with `nohup` and `setsid`, using `flock` to keep one server for this environment. This lets the server keep running when the setup terminal closes. Native project registration and headless serving also handle stale runtime records after container recreation. Agents inherit the Bench environment, including pre-commit. The hook waits for runtime metadata and the HTTP endpoint before completing.
 
 Use Dev Containers to create and resume the environment. Plain `docker compose up` or `docker restart` does not execute Dev Container lifecycle hooks.
+
+## Frappe agent skills
+
+Setup automatically installs all skills from [frappe/skills](https://github.com/frappe/skills) and the [Frappe UI skill](https://github.com/frappe/frappe-ui/tree/main/skills/frappe-ui) for Codex. This includes framework development, Frappe code review, code style, technical writing, UI design, and the repository's explicitly invoked workflows.
+
+Skills are available across the Bench and individual app projects through `/home/frappe/.agents/skills`. The complete shared agent directory, including the skills CLI's registry metadata, is stored in the ignored `development/.agent-data` directory on the host. Keep that directory with the checkout when recreating the container. Each stack's own checkout keeps its skills separate.
+
+The creation hook reinstalls the current upstream skills when a container is recreated; ordinary restarts keep the installed copies. Additional skills in other directories are retained. Keep changes to the bundled skills in your own skill repository because reinstalling refreshes their contents. The skill repositories are not copied into the Bench's application list and do not install Frappe apps.
+
+After installation, the skills are available to the agent on its next turn. Their descriptions control automatic use; skills marked for explicit invocation, such as `ship-it` and `deep-app-audit`, still require you to request them.
 
 ## Check the environment
 
