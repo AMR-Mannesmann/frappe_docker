@@ -12,7 +12,7 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
 The template already includes the agent Compose configuration and waits for T3 startup. Copying it is enough to enable the workflow; no JSON edits are needed. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`.
 
-To choose different apps, names or ports, set them in `.devcontainer/.env` as described under [Customize the setup](#customize-the-setup) before starting. That section also covers corporate CA configuration, which must be applied before the first container creation when required by your network.
+The steps below include choosing the apps, names and ports for your stack in `.devcontainer/.env`. If your network requires a corporate CA, apply the configuration under [Customize the setup](#customize-the-setup) before the first container creation.
 
 1. Copy the development configuration if you do not already have one:
 
@@ -20,7 +20,27 @@ To choose different apps, names or ports, set them in `.devcontainer/.env` as de
    [ -d .devcontainer ] || cp -R devcontainer-example .devcontainer
    ```
 
-2. Create or recreate the environment:
+2. Create `.devcontainer/.env` from the example if it does not already exist, then edit it for your stack:
+
+   ```sh
+   [ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
+   ```
+
+   Choose the Compose project name, host port, apps JSON, Bench name and site name. For example:
+
+   ```dotenv
+   COMPOSE_PROJECT_NAME=frappe-dev-a
+   FRAPPE_T3_PORT=3774
+   FRAPPE_APPS_JSON=../.devcontainer/apps.json
+   FRAPPE_BENCH_NAME=my-bench
+   FRAPPE_SITE_NAME=my-app.localhost
+   ```
+
+   Each parallel stack needs its own project name, source checkout and available host port. For an existing stack, retain its project name and port to keep using its state and connection address. The container port remains `3773`; the published port listens on the host's loopback interface.
+
+   Prepare the selected apps JSON before starting. For the custom path above, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`. You can also keep `FRAPPE_APPS_JSON=apps-example.json` to use the provided application list. Keep defaults for any settings that already suit your project.
+
+3. Create or recreate the environment:
 
    ```sh
    devcontainer up --workspace-folder . --remove-existing-container
@@ -92,27 +112,7 @@ The example does not mount your host T3 home, transfer host settings, or share c
 
 ## Customize the setup
 
-The defaults work without an `.env` file. To customize them, create `.devcontainer/.env` from the example if it does not already exist:
-
-```sh
-[ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
-```
-
-For example:
-
-```dotenv
-COMPOSE_PROJECT_NAME=frappe-dev-a
-FRAPPE_T3_PORT=3774
-FRAPPE_APPS_JSON=../.devcontainer/apps.json
-FRAPPE_BENCH_NAME=my-bench
-FRAPPE_SITE_NAME=my-app.localhost
-```
-
-Create the selected apps JSON before starting the container. For example, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`; the example above selects the file in `.devcontainer` at the repository root.
-
-For an existing stack, retain its Compose project name and host port. Each parallel stack needs its own project name, source checkout, and host port. The container port remains `3773`; the published port listens on the host's loopback interface.
-
-Set these values in `.devcontainer/.env`; the Compose overlay passes them into the container and the lifecycle hook passes them to the existing installer:
+Step 2 above covers the manual `.env` edits for your stack. The Compose overlay passes these values into the container and the lifecycle hook passes them to the existing installer:
 
 | Setting             | Installer argument | Default                 |
 | ------------------- | ------------------ | ----------------------- |
