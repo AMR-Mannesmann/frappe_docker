@@ -16,6 +16,12 @@ services:
       - t3-data:/home/frappe/.t3
       - github-cli-data:/home/frappe/.config/gh
       - gitlab-cli-data:/home/frappe/.config/glab-cli
+      - type: bind
+        source: ${FRAPPE_T3_SETTINGS_FILE:-./t3-settings.json}
+        target: /run/frappe-t3-settings.json
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
       - "127.0.0.1:${FRAPPE_T3_PORT:-3774}:3773"
 

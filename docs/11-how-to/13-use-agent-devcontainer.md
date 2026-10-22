@@ -60,13 +60,14 @@ uv pip check --python env/bin/python
 sudo apt-get update
 sudo apt-get install --yes --no-install-recommends gh glab
 npm install --global @openai/codex t3
+t3 --version
 ```
 
 When omitted from `.env`, the three installer settings default to `apps-example.json`, `frappe-bench`, and `development.localhost`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before the tool installations; repair an incomplete site before retrying.
 
 The generated constraints file keeps pre-commit's installation from replacing dependencies already installed for Frappe and your apps. It is regenerated from the selected Bench, and the dependency check must pass before npm runs.
 
-The npm packages use current releases, without version pins. Each new container installs them again automatically.
+The npm packages use current releases, without version pins. Each new container installs them again automatically. The version check also completes T3's first native-runtime download before the startup hook's readiness deadline.
 
 `postStartCommand` enters the configured Bench, activates its Python environment, registers the Bench with `t3 project add`, and runs `t3 serve`. An already-registered project is retained. The commands run in their own session with `nohup` and `setsid`, using `flock` to keep one server for this environment. This lets the server keep running when the setup terminal closes. Native project registration and headless serving also handle stale runtime records after container recreation. Agents inherit the Bench environment, including pre-commit. The hook waits for runtime metadata and the HTTP endpoint before completing.
 
@@ -118,19 +119,29 @@ Alternatively, seed the container from an existing file-based host login:
 
 The source is mounted read-only and copied only when the container has no `auth.json`. The container's private copy remains writable for token refresh; subsequent setup preserves it. A host OS keyring is not exposed by mounting a file. If a copied login stops working after another client refreshes or revokes it, sign in separately or explicitly renew the seed. See [Codex authentication](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
 
-The example does not mount your host T3 home or share credentials between stacks. Each stack retains its own environment identity and sessions. To apply preferences across environments, see [Reuse local T3 settings](#reuse-local-t3-settings).
+The example does not mount your host T3 home or share credentials between stacks. Each stack retains its own environment identity and sessions. To initialize preferences from your local machine, see [Reuse local T3 settings](#reuse-local-t3-settings).
 
 ## Reuse local T3 settings
 
-Connecting the environment does not automatically copy the local machine's environment settings. In the T3 client with both environments connected:
+New stacks can automatically start with your local T3 preferences. Configure the source before their first startup:
 
-1. Open **Settings** and choose **All projects** and **All environments** in the **Applying settings for …** selector.
-2. Apply the preferences you want to use on both machines. A control showing **Mixed** means the selected environments currently have different values; choosing a value applies it to all of them.
-3. For a setting specific to this stack, select its environment or project before editing it.
+1. Set `FRAPPE_T3_SETTINGS_FILE` in `.devcontainer/.env` to the absolute path of your local T3 environment's `userdata/settings.json`. For a standard Linux installation:
 
-Selecting **All environments** alone does not copy existing values. Each edit is applied to the currently connected environments; this is not ongoing synchronization, and environments connected later keep their own values. The container's saved preferences persist in `t3-data` across recreation.
+   ```dotenv
+   FRAPPE_T3_SETTINGS_FILE=/home/your-user/.t3/userdata/settings.json
+   ```
 
-Appearance, confirmations and other device preferences belong to the T3 client you are using. Providers and their authentication are configured per environment, so local provider paths and credentials need separate configuration. Each project's own overrides still take precedence over the shared environment defaults. See T3's [settings and project overrides](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md) for the setting scopes.
+2. Create the devcontainer as usual. The source file must exist on the Docker host. A custom T3 home changes its location; when using WSL, choose the settings of the local environment you actually want to inherit.
+
+No changes to `devcontainer.json` are needed. If the variable is unset, the template uses `.devcontainer/t3-settings.json`, which contains `{}` and leaves T3's defaults in place. You can also put shared preferences in that file and keep it in your own development configuration.
+
+The startup hook reads that file through a read-only mount and imports its preferences before T3 creates the project or starts the server. Defaults for models, provider options, source-control writing, and thread behavior come from the local environment rather than T3's built-in defaults. Reuse this configured `.devcontainer` for subsequent stacks; each new stack reads the current local preferences automatically.
+
+Per-project overrides, host directories, device hosts, external integration settings, and sensitive provider environment variables are omitted. Provider executable and home-directory overrides are reset to use the container's own tools and authentication. T3's secret store and CLI login files are not copied. Custom provider commands and launch arguments must still work inside the container; seeding does not install additional providers. Appearance and other device preferences stay with the T3 client you are already using.
+
+The import runs only while the destination has no `userdata/settings.json`. An existing stack retains its saved settings on restart and recreation, even if the local preferences change. The host file is never modified, and T3 identity, pairing, projects, and threads are never copied. Malformed JSON stops startup rather than installing a partial settings file.
+
+For later changes to existing environments, T3's **Settings → All projects → All environments** controls can apply edits to all connected targets. That is a bulk edit rather than ongoing synchronization. See T3's [settings and project overrides](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md) for the setting scopes.
 
 ## Authenticate GitHub and GitLab
 
