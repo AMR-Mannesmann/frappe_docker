@@ -53,10 +53,11 @@ cd frappe_docker
 
 ## Step 3 — Set Up the Dev Container Config
 
-The `devcontainer-example/` folder contains a ready-made `docker-compose.yml` for development. Copy it into place:
+The complete `development/` template includes `.devcontainer/docker-compose.yml`, the installer and apps example. Copy it into a new environment directory, then enter it:
 
 ```bash
-cp -R devcontainer-example .devcontainer
+cp -R development environments/task-a
+cd environments/task-a
 ```
 
 This gives you `.devcontainer/docker-compose.yml` which defines all the services you need:
@@ -65,6 +66,8 @@ This gives you `.devcontainer/docker-compose.yml` which defines all the services
 - `mariadb` — the database
 - `redis-cache` — cache layer
 - `redis-queue` — background job queue
+
+The commands below use only the base Compose file and perform Bench setup manually. They use the explicit project name `task-a_devcontainer`, matching the name Dev Containers would derive from this environment folder. Plain Docker Compose does not run the template's lifecycle hooks. For automatic Bench, T3 and Codex setup, use the [Dev Container CLI workflow](../11-how-to/13-use-agent-devcontainer.md).
 
 ### Configure ports for CLI-only use
 
@@ -120,13 +123,13 @@ services:
 ## Step 5 — Start the Containers
 
 ```bash
-docker compose -f .devcontainer/docker-compose.yml up -d
+docker compose --project-name task-a_devcontainer -f .devcontainer/docker-compose.yml up -d
 ```
 
 Verify everything is running:
 
 ```bash
-docker compose -f .devcontainer/docker-compose.yml ps
+docker compose --project-name task-a_devcontainer -f .devcontainer/docker-compose.yml ps
 ```
 
 You should see all services with status `Up`.
@@ -156,10 +159,10 @@ With this example, open the first site on port `8100` instead of `8000`.
 ## Step 6 — Enter the Development Container
 
 ```bash
-docker exec -e "TERM=xterm-256color" -w /workspace/development -it devcontainer-frappe-1 bash
+docker compose --project-name task-a_devcontainer -f .devcontainer/docker-compose.yml exec frappe bash
 ```
 
-> The container name is typically `devcontainer-frappe-1`. If it differs, check with `docker ps` and use the actual name shown.
+This selects the `frappe` service without depending on a generated container name.
 
 You are now inside the container as the `frappe` user. All subsequent commands in this guide run **inside the container** unless noted otherwise.
 
@@ -177,7 +180,7 @@ Use `version-16` for the latest stable release. Swap for `version-15` if needed.
 This creates:
 
 ```
-development/
+environments/task-a/
 └── frappe-bench/
     ├── apps/          ← All Frappe apps live here
     ├── sites/         ← Your sites (databases, uploaded files)

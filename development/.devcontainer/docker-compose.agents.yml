@@ -26,7 +26,7 @@ services:
       - t3-data:/home/frappe/.t3
       - github-cli-data:/home/frappe/.config/gh
       - gitlab-cli-data:/home/frappe/.config/glab-cli
-      - ../development/.agent-data:/home/frappe/.agents
+      - ../.agent-data:/home/frappe/.agents
       - type: bind
         source: ./t3-entrypoint.py
         target: /usr/local/share/frappe-devcontainer/t3-entrypoint.py

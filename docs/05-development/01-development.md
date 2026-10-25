@@ -31,16 +31,19 @@ git clone https://github.com/frappe/frappe_docker.git
 cd frappe_docker
 ```
 
-Copy example devcontainer config from `devcontainer-example` to `.devcontainer`
+Copy the complete `development/` template into a new environment directory, then enter it. The template includes `.devcontainer/`, the installer, an apps example and editor configuration examples.
 
 ```shell
-cp -R devcontainer-example .devcontainer
+cp -R development environments/task-a
+cd environments/task-a
 ```
 
-Copy example vscode config for devcontainer from `development/vscode-example` to `development/.vscode`. This will setup basic configuration for debugging.
+Edit the included `.devcontainer/.env` and selected apps JSON before startup. Dev Containers derives the Compose project name from the environment directory (`task-a_devcontainer` for this example). Each parallel environment needs a unique folder name and available host ports. See [Use agent tools in a devcontainer](../11-how-to/13-use-agent-devcontainer.md) for all settings, authentication and corporate CA configuration.
+
+Optionally copy the included VS Code configuration for debugging:
 
 ```shell
-cp -R development/vscode-example development/.vscode
+cp -R vscode-example .vscode
 ```
 
 ## Use VSCode Remote Containers extension
@@ -59,13 +62,13 @@ VSCode should automatically inquire you to install the required extensions, that
 
 After the extensions are installed, you can:
 
-- Open frappe_docker folder in VS Code.
+- Open the copied environment folder in VS Code.
   - `code .`
 - Launch the command, from Command Palette (Ctrl + Shift + P) `Dev Containers: Reopen in Container`. You can also click in the bottom left corner to access the remote container menu.
 
 Notes:
 
-- The `development` directory is ignored by git. It is mounted and available inside the container. Create all your benches (installations of bench, the tool that manages frappe) inside this directory.
+- The copied environment directory is mounted at `/workspace/development`. Create your Benches there. Everything under `environments/` except its placeholder is ignored by the outer repository; app repositories inside each Bench still track their own changes. Keep the source `development/` directory as the clean template.
 - Node v14 and v10 are installed. Check with `nvm ls`. Node v14 is used by default.
 
 The copied development template automatically creates the default Bench and site, installs T3 Code, Codex, the GitHub/GitLab CLIs and Frappe/Frappe UI skills, and starts T3. To choose apps, Bench and site names, or ports before creating the container, follow [Use agent tools in a devcontainer](../11-how-to/13-use-agent-devcontainer.md).
@@ -106,7 +109,7 @@ cd frappe-bench
 At this point the the directory structure will be very close to this, if not exact,
 
 ```
-development/
+environments/task-a/
 ├── frappe-bench/           # Your actual Frappe installation
 │   ├── apps/              # All installed Frappe applications
 │   │   ├── frappe/        # Core framework (don't modify directly)
@@ -343,7 +346,7 @@ You can now login with user `Administrator` and the password you choose when cre
 
 To debug workers, skip starting worker with honcho and start it with VSCode debugger.
 
-For advance vscode configuration in the devcontainer, change the config files in `development/.vscode`.
+For advanced VS Code configuration in the devcontainer, change the config files in your environment's `.vscode/` directory.
 
 ## Developing using the interactive console
 
@@ -380,18 +383,18 @@ The first command can take a few seconds to be executed, this is to be expected.
 
 ## Manually start containers
 
-The example configuration forwards development ports through VS Code and does not publish them through Docker. If you don't use VS Code, first follow the [CLI-only port configuration](04-alternate-setup.md#configure-ports-for-cli-only-use), then start the containers manually:
+The base Compose file alone does not run the Dev Container lifecycle hooks or publish development ports. For automatic Bench and agent setup, use the [Dev Container CLI workflow](../11-how-to/13-use-agent-devcontainer.md). To set up Bench manually instead, follow the [CLI-only port configuration](04-alternate-setup.md#configure-ports-for-cli-only-use), then run these commands from your copied environment directory. Use the same explicit project name for each command:
 
 ### Running the containers
 
 ```shell
-docker-compose -f .devcontainer/docker-compose.yml up -d
+docker compose --project-name task-a_devcontainer -f .devcontainer/docker-compose.yml up -d
 ```
 
 And enter the interactive shell for the development container with the following command:
 
 ```shell
-docker exec -e "TERM=xterm-256color" -w /workspace/development -it devcontainer-frappe-1 bash
+docker compose --project-name task-a_devcontainer -f .devcontainer/docker-compose.yml exec frappe bash
 ```
 
 ## Use additional services during development

@@ -38,8 +38,8 @@ frappe_docker/
 ├── compose.yaml          # Base Compose File for production setups
 ├── pwd.yml               # Single Compose File for quick disposable demo
 ├── images/               # Dockerfiles for building Frappe images
-├── development/          # Development environment configurations
-├── devcontainer-example/ # VS Code devcontainer setup
+├── development/          # Complete development template, including .devcontainer/
+├── environments/         # Local environment copies (contents ignored by Git)
 └── resources/            # Helper scripts and configuration templates
 ```
 
@@ -51,6 +51,7 @@ frappe_docker/
 - `overrides/` - Opinionated Compose overrides for common deployment patterns
 - `compose.yaml` - Base compose file for production setups (production)
 - `pwd.yml` - Disposable demo environment (non-production)
+- `development/` - Copy into `environments/<name>/` to create an independent devcontainer; see [the development setup](docs/05-development/01-development.md)
 
 ## Documentation
 

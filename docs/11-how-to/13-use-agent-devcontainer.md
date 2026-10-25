@@ -6,42 +6,44 @@ title: Use Agent Tools in a Devcontainer
 
 The development template installs T3 Code, Codex, GitHub CLI (`gh`), GitLab CLI (`glab`), and the Frappe/Frappe UI agent skills through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
-You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
+You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root to copy the template, then run subsequent commands from your copied environment directory. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
 
 ## Set up the devcontainer
 
-The template already includes the agent Compose configuration and waits for T3 startup. Copying it is enough to enable the workflow; no JSON edits are needed. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. Start Bench to serve the created site, as shown in step 4.
+The complete template lives in `development/`, including its `.devcontainer/` configuration, installer and apps example. Copy that directory once for each environment. Copies also work outside this repository; no files from the original checkout are mounted or required at runtime. Keep `development/` as the clean template and create Benches in the copies.
+
+The template already includes the agent Compose configuration and waits for T3 startup. No JSON edits are needed to enable the workflow. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. Start Bench to serve the created site, as shown in step 4.
 
 The steps below include choosing the apps, names and ports for your stack in `.devcontainer/.env`. If your network requires a corporate CA, apply the configuration under [Customize the setup](#customize-the-setup) before the first container creation.
 
-1. Copy the development configuration if you do not already have one:
+1. Copy the complete development template into a new named environment, then enter it:
 
    ```sh
-   [ -d .devcontainer ] || cp -R devcontainer-example .devcontainer
+   cp -R development environments/task-a
+   cd environments/task-a
    ```
 
-2. Create `.devcontainer/.env` from the example if it does not already exist, then edit it for your stack:
+   The repository includes `environments/` with a tracked placeholder; everything else under it is ignored by Git, and the directory is excluded from Docker build contexts. Each copy contains its own installer, apps configuration, skills data and Bench workspace. Choose a new destination name when creating another environment.
 
-   ```sh
-   [ -f .devcontainer/.env ] || cp .devcontainer/.env.example .devcontainer/.env
-   ```
+2. Edit the included `.devcontainer/.env` for your stack:
 
-   Choose the Compose project name, host ports, T3 channel, apps JSON, Bench name and site name. For example:
+   Choose the host ports, T3 channel, apps JSON, Bench name and site name. For example:
 
    ```dotenv
-   COMPOSE_PROJECT_NAME=frappe-dev-a
    FRAPPE_T3_PORT=3774
    FRAPPE_T3_CHANNEL=latest
    FRAPPE_HTTP_PORT=8000
    FRAPPE_REALTIME_PORT=9000
-   FRAPPE_APPS_JSON=../.devcontainer/apps.json
+   FRAPPE_APPS_JSON=apps.json
    FRAPPE_BENCH_NAME=my-bench
    FRAPPE_SITE_NAME=my-app.localhost
    ```
 
-   Each parallel stack needs its own project name, source checkout and available host ports. For example, a second stack can use T3 port `3775`, web port `8001` and realtime port `9001`. For an existing stack, retain its project name and T3 port to keep using its state and connection address. Container ports remain `3773`, `8000` and `9000`; all published ports listen on the host's loopback interface.
+   Dev Containers derives the Compose project name from the copied folder: `task-a` becomes `task-a_devcontainer`. No `COMPOSE_PROJECT_NAME` entry is needed. Use unique lowercase folder names containing letters, digits, dashes or underscores, beginning with a letter or digit. Keep the folder name and T3 port stable for an existing environment to retain its volumes and connection address.
 
-   Prepare the selected apps JSON before starting. For the custom path above, copy `development/apps-example.json` to `.devcontainer/apps.json` and edit its applications. Paths are container paths relative to `/workspace/development`. You can also keep `FRAPPE_APPS_JSON=apps-example.json` to use the provided application list. Keep defaults for any settings that already suit your project.
+   Each parallel stack needs its own environment directory and available host ports. For example, a second stack can use T3 port `3775`, web port `8001` and realtime port `9001`. Container ports remain `3773`, `8000` and `9000`; all published ports listen on the host's loopback interface.
+
+   Prepare the selected apps JSON before starting. For the custom path above, copy `apps-example.json` to `apps.json` inside your environment and edit its applications. Paths are container paths relative to `/workspace/development`, which is the copied environment directory. You can also edit the provided application list directly and keep `FRAPPE_APPS_JSON=apps-example.json`. Keep defaults for any settings that already suit your project.
 
 3. Create or recreate the environment:
 
@@ -49,9 +51,9 @@ The steps below include choosing the apps, names and ports for your stack in `.d
    devcontainer up --workspace-folder . --remove-existing-container
    ```
 
-   In VS Code, use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when enabling agents in an existing one. Reopening an existing container alone does not apply the new volumes, environment, and published port.
+   In VS Code, open the copied environment folder, then use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when updating an existing one. Reopening an existing container alone does not apply new volumes, environment, and published ports.
 
-4. Start Frappe from a terminal in the repository root:
+4. Start Frappe from a host terminal in the copied environment directory:
 
    ```sh
    devcontainer exec --workspace-folder . bash -lc 'cd "/workspace/development/$FRAPPE_BENCH_NAME" && bench start'
@@ -63,7 +65,7 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    These are Docker-published ports and work with the CLI and T3. `forwardPorts` in `devcontainer.json` provides additional VS Code forwarding; it is not a replacement for Docker publishing when using the CLI alone.
 
-The ordered setup commands are in `devcontainer-example/devcontainer.json`. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment, the GitHub/GitLab CLIs from the image's Debian package repositories, and the npm tools:
+The ordered setup commands are in `development/.devcontainer/devcontainer.json` in the source template, or `.devcontainer/devcontainer.json` in a copied environment. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment, the GitHub/GitLab CLIs from the image's Debian package repositories, and the npm tools:
 
 ```sh
 cd /workspace/development
@@ -112,7 +114,7 @@ This integration uses T3's internal `__service-launcher` entrypoint and launcher
 
 Setup automatically installs all skills from [frappe/skills](https://github.com/frappe/skills) and the [Frappe UI skill](https://github.com/frappe/frappe-ui/tree/main/skills/frappe-ui) for Codex. This includes framework development, Frappe code review, code style, technical writing, UI design, and the repository's explicitly invoked workflows.
 
-Skills are available across the Bench and individual app projects through `/home/frappe/.agents/skills`. The complete shared agent directory, including the skills CLI's registry metadata, is stored in the ignored `development/.agent-data` directory on the host. Keep that directory with the checkout when recreating the container. Each stack's own checkout keeps its skills separate.
+Skills are available across the Bench and individual app projects through `/home/frappe/.agents/skills`. The complete shared agent directory, including the skills CLI's registry metadata, is stored in `.agent-data/` inside your environment directory on the host. Keep that directory when recreating the container. Each environment has its own skills data.
 
 The creation hook reinstalls the current upstream skills when a container is recreated; ordinary restarts keep the installed copies. Additional skills in other directories are retained. Keep changes to the bundled skills in your own skill repository because reinstalling refreshes their contents. The skill repositories are not copied into the Bench's application list and do not install Frappe apps.
 
@@ -127,7 +129,7 @@ devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --outp
 devcontainer exec --workspace-folder . python /usr/local/share/frappe-devcontainer/t3-entrypoint.py status
 ```
 
-T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory and uses the Compose project name, such as `frappe-dev-a`, as its initial title. Existing project titles are retained on subsequent starts, including any name you choose in T3. You can add individual application projects as well. Project registration and settings persist with the environment.
+T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory and uses the Compose project name, such as `task-a_devcontainer`, as its initial title. Existing project titles are retained on subsequent starts, including any name you choose in T3. You can add individual application projects as well. Project registration and settings persist with the environment.
 
 To rename an already-registered Bench project without recreating it or its threads:
 
@@ -181,7 +183,7 @@ New stacks can automatically start with your local T3 preferences. Configure the
 
 No changes to `devcontainer.json` are needed. If the variable is unset, the template uses `.devcontainer/t3-settings.json`, which contains `{}` and leaves T3's defaults in place. You can also put shared preferences in that file and keep it in your own development configuration.
 
-The startup hook reads that file through a read-only mount and imports its preferences before T3 starts. Defaults for models, provider options, source-control writing, and thread behavior come from the local environment rather than T3's built-in defaults. Reuse this configured `.devcontainer` for subsequent stacks; each new stack reads the current local preferences automatically.
+The startup hook reads that file through a read-only mount and imports its preferences before T3 starts. Defaults for models, provider options, source-control writing, and thread behavior come from the local environment rather than T3's built-in defaults. Configure the source in your private template or preset for subsequent stacks; each new stack reads the current local preferences automatically.
 
 Per-project overrides, host directories, device hosts, external integration settings, and sensitive provider environment variables are omitted. Provider executable and home-directory overrides are reset to use the container's own tools and authentication. T3's secret store and CLI login files are not copied. Custom provider commands and launch arguments must still work inside the container; seeding does not install additional providers. Appearance and other device preferences stay with the T3 client you are already using.
 
@@ -214,7 +216,7 @@ Keep the Bench name relative to `/workspace/development`. Its value is used by b
 
 Apply configuration changes by recreating the container. These are creation inputs: changing the apps JSON does not change an existing Bench's applications, and changing a Bench or site name selects a different directory or site rather than renaming existing data.
 
-T3 uses the Bench directory as its initial project and the Compose project name as the default display title. Rename the project in T3 to change that title; keep `COMPOSE_PROJECT_NAME` stable for an existing stack because it also selects its persistent volumes. For Frappe development, use threads in the project's checkout and give parallel stacks separate checkouts and data.
+T3 uses the Bench directory as its initial project and the Compose project name as the default display title. Rename the project in T3 to change that title; retain the environment folder name because it selects the Compose project and its persistent volumes. For Frappe development, use threads in the project's checkout and give parallel stacks separate environment directories and data.
 
 For a corporate CA, add a private Compose override that mounts your certificate files and arrange for `sudo update-ca-certificates` to run before the network-dependent `postCreateCommand` steps. Configure the Node or Codex CA bundle when required by those clients. Keep company certificates and credentials in your local configuration or private repository.
 
@@ -228,4 +230,12 @@ Compose keeps Codex state in `codex-data` and the complete T3 home in `t3-data`,
 
 GitHub and GitLab CLI configuration is retained in their own volumes, and the creation hook reinstalls both CLI packages. When updating an existing configuration, recreate the container to apply the new mounts and environment variables.
 
-Keep your workspace checkout and database volume as well. Removing volumes, changing the Compose project name, or deleting the checkout can disconnect existing state from its files. Back up persistent data separately; container recreation is not a backup operation. An active agent turn is interrupted when its container stops.
+Keep your environment directory and database volume as well. Removing volumes, renaming the environment folder, or deleting its files can disconnect existing state from its workspace. Back up persistent data separately; container recreation is not a backup operation. An active agent turn is interrupted when its container stops.
+
+## Existing environments and template updates
+
+Copying the template creates an independent environment; it does not move an existing Bench, database or T3 history. Existing devcontainers can continue using their current configuration. Do not copy an initialized environment over `development/`; its generated Bench and agent data would then be copied into every new environment.
+
+Changes to `development/.devcontainer/` apply to future copies. To update an existing environment, apply the relevant configuration changes to its own `.devcontainer/`, retain its private overrides and settings, then recreate it from that environment directory.
+
+When deliberately migrating an older layout, preserve the entire Bench, agent data, database and T3 volumes, keep the container Bench path unchanged, and explicitly retain its original `COMPOSE_PROJECT_NAME` in `.devcontainer/.env`. This prevents the new folder-derived name from selecting fresh volumes. Moving the source template alone does not migrate running environments.

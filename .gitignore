@@ -19,7 +19,13 @@ development/*
 
 # VS Code devcontainer
 .devcontainer
+!development/.devcontainer/
+!development/.devcontainer/.env
 *.code-workspace
+
+# Local development environments (keep the empty directory in Git)
+/environments/*
+!/environments/.gitkeep
 
 # Python
 *.pyc

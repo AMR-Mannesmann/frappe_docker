@@ -6,7 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-SOURCE = Path(__file__).resolve().parents[1] / "devcontainer-example/t3-entrypoint.py"
+SOURCE = (
+    Path(__file__).resolve().parents[1] / "development/.devcontainer/t3-entrypoint.py"
+)
 SPEC = importlib.util.spec_from_file_location("t3_entrypoint", SOURCE)
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

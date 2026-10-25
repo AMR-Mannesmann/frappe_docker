@@ -201,33 +201,33 @@ docker compose -f pwd.yml logs -f create-site
 
 For active development with hot-reload and debugging:
 
-1. **Copy devcontainer configuration:**
+1. **Copy the complete development template:**
 
    ```bash
-   cp -R devcontainer-example .devcontainer
+   cp -R development environments/task-a
+   cd environments/task-a
    ```
 
-2. **Open in VSCode with Dev Containers extension** (Remote - Containers)
+2. **Customize `.devcontainer/.env` and the apps JSON**, then open this environment folder in VS Code with the Dev Containers extension.
 
    - VSCode will detect `.devcontainer` and prompt to reopen in container
 
-3. **Run automated installer:**
+3. **Wait for automatic setup, then start Bench:**
 
    ```bash
-   cd /workspace/development
-   python installer.py
-   # Follow interactive prompts for site name, apps to install, etc.
+   cd /workspace/development/frappe-bench
+   bench start
    ```
 
 4. **Access development files:**
    ```
-   development/frappe-bench/  # Your live development environment
+   environments/task-a/frappe-bench/  # Your live development environment
    ```
 
 ### Development File Locations
 
 ```
-development/
+environments/task-a/
 ├── frappe-bench/           # Your actual Frappe installation
 │   ├── apps/              # All installed Frappe applications
 │   │   ├── frappe/        # Core framework (don't modify directly)
@@ -525,29 +525,23 @@ docker compose -f pwd.yml down -v
 **Goal:** Set up for daily development with hot-reload
 
 ```bash
-# Copy devcontainer config
-cp -R devcontainer-example .devcontainer
+# Copy the complete development template and customize its settings/apps
+cp -R development environments/task-a
+cd environments/task-a
+# Edit .devcontainer/.env and apps-example.json before startup
 
 # Open in VSCode
 # 1. Install "Dev Containers" extension
 # 2. Command Palette (Ctrl+Shift+P) → "Reopen in Container"
 # 3. Wait for container build (~5 min first time)
 
-# Inside container terminal:
-cd /workspace/development
-python installer.py
-
-# Follow prompts:
-# - Site name: development.localhost
-# - Install ERPNext: Yes
-# - Version: version-15
-
-# Start development server
-cd frappe-bench
+# Bench, the site and agent tools are initialized automatically.
+# Inside the container, start the development server:
+cd /workspace/development/frappe-bench
 bench start
 
-# Access: http://localhost:8000
-# Edit files in: development/frappe-bench/apps/
+# Access: http://development.localhost:8000
+# Edit files in: environments/task-a/frappe-bench/apps/ on the host
 ```
 
 ### 3. Custom App Development (30 minutes)
