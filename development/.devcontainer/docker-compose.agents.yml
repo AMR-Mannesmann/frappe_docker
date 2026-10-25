@@ -4,8 +4,7 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 90s
-    command:
-      ["python", "/usr/local/share/frappe-devcontainer/t3-entrypoint.py", "run"]
+    command: ["python", "/usr/local/share/frappe-devcontainer/t3-entrypoint.py"]
     environment:
       FRAPPE_DEV_AGENTS: "1"
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}

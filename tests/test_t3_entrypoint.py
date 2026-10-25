@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -10,8 +11,24 @@ SOURCE = (
     Path(__file__).resolve().parents[1] / "development/.devcontainer/t3-entrypoint.py"
 )
 SPEC = importlib.util.spec_from_file_location("t3_entrypoint", SOURCE)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+ENTRYPOINT = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(ENTRYPOINT)
+HOOK = json.loads((SOURCE.parent / "devcontainer.json").read_text())[
+    "postStartCommand"
+][-1]
+
+
+def hook_module(marker, name):
+    code = HOOK.split(f"<<'{marker}'\n", 1)[1].split(f"\n{marker}\n", 1)[0]
+    module = types.ModuleType(name)
+    exec(
+        compile(code, str(SOURCE.parent / "devcontainer.json"), "exec"), module.__dict__
+    )
+    return module
+
+
+MODULE = hook_module("T3_PREPARE", "t3_provisioning")
+READINESS = hook_module("T3_READY", "t3_readiness")
 
 
 class T3LifecycleTests(unittest.TestCase):
@@ -23,7 +40,7 @@ class T3LifecycleTests(unittest.TestCase):
             {"T3CODE_HOME": str(self.root), "FRAPPE_BENCH_NAME": "test-bench"},
         )
         self.environment.start()
-        self.lifecycle = MODULE.T3Lifecycle(ready_file=self.root / "ready")
+        self.lifecycle = MODULE.T3Provisioning(ready_file=self.root / "ready")
 
     def tearDown(self):
         self.environment.stop()
@@ -95,25 +112,37 @@ class T3LifecycleTests(unittest.TestCase):
             b'{"protocol":3,"activeVersion":"0.1.3","update":{"status":"committed"}}\n'
         )
         state.write_bytes(original)
-        result = type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
         with (
-            patch.object(self.lifecycle, "activate_bench"),
             patch.object(self.lifecycle, "bootstrap_version") as bootstrap,
             patch.object(self.lifecycle, "seed_settings") as seed,
-            patch.object(self.lifecycle, "wait_ready"),
-            patch.object(
-                self.lifecycle,
-                "runtime",
-                return_value=self.root / "runtime/versions/0.1.3/t3",
-            ),
-            patch.object(MODULE.subprocess, "run", return_value=result),
+            patch.object(self.lifecycle, "runtime") as runtime,
         ):
             self.lifecycle.prepare()
         bootstrap.assert_not_called()
         seed.assert_not_called()
+        runtime.assert_called_once_with("0.1.3", preflight=False)
         self.assertEqual(state.read_bytes(), original)
 
-    def test_pending_recovery_finishes_before_project_registration(self):
+    def test_pending_update_defers_database_preflight_and_settings(self):
+        state = self.root / "runtime/service-state.json"
+        state.parent.mkdir()
+        original = (
+            b'{"protocol":3,"activeVersion":"0.1.2","update":{"status":"pending"}}\n'
+        )
+        state.write_bytes(original)
+        with (
+            patch.object(self.lifecycle, "runtime") as runtime,
+            patch.object(self.lifecycle, "seed_settings") as seed,
+            patch.object(self.lifecycle, "bootstrap_version") as bootstrap,
+        ):
+            self.lifecycle.prepare()
+        runtime.assert_called_once_with("0.1.2", preflight=False)
+        seed.assert_not_called()
+        bootstrap.assert_not_called()
+        self.assertTrue(self.lifecycle.ready_file.exists())
+        self.assertEqual(state.read_bytes(), original)
+
+    def test_readiness_waits_for_recovery_and_selects_recovered_runtime(self):
         state = self.root / "runtime/service-state.json"
         state.parent.mkdir()
         state.write_text(
@@ -125,35 +154,75 @@ class T3LifecycleTests(unittest.TestCase):
                 }
             )
         )
-        events = []
 
         def recovered():
-            events.append("recovery")
-            self.assertTrue(self.lifecycle.ready_file.exists())
             state.write_text(json.dumps({"protocol": 3, "activeVersion": "0.1.3"}))
-
-        def register(arguments, **kwargs):
-            events.append("project")
-            self.assertEqual(arguments[0], str(self.root / "runtime/versions/0.1.3/t3"))
-            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            return json.dumps(
+                {
+                    "serverVersion": "0.1.3",
+                    "capabilities": {"serverSelfUpdate": "boot-service"},
+                }
+            ).encode()
 
         with (
-            patch.object(self.lifecycle, "activate_bench"),
-            patch.object(
-                self.lifecycle,
-                "runtime",
-                side_effect=lambda version, **kw: self.root
-                / f"runtime/versions/{version}/t3",
-            ),
-            patch.object(self.lifecycle, "seed_settings") as seed,
-            patch.object(self.lifecycle, "bootstrap_version") as bootstrap,
-            patch.object(self.lifecycle, "wait_ready", side_effect=recovered),
-            patch.object(MODULE.subprocess, "run", side_effect=register),
+            patch.object(READINESS.http.client, "HTTPConnection") as connection,
+            patch.object(READINESS.time, "sleep") as sleep,
         ):
-            self.lifecycle.prepare()
-        self.assertEqual(events, ["recovery", "project"])
-        seed.assert_not_called()
-        bootstrap.assert_not_called()
+            response = connection.return_value.getresponse.return_value
+            response.status = 200
+            response.read.side_effect = recovered
+            runtime = READINESS.wait_ready(self.root, 3773)
+        self.assertEqual(runtime, self.root / "runtime/versions/0.1.3/t3")
+        sleep.assert_called_once_with(0.5)
+
+    def test_entrypoint_rejects_unsafe_or_incompatible_state_without_replacing_it(self):
+        state = self.root / "runtime/service-state.json"
+        state.parent.mkdir()
+        for value in (
+            [],
+            {"protocol": 4, "activeVersion": "0.1.3"},
+            {"protocol": 3, "activeVersion": "../../userdata"},
+        ):
+            state.write_text(json.dumps(value))
+            original = state.read_bytes()
+            with self.assertRaises(RuntimeError):
+                ENTRYPOINT.selected_runtime(self.root)
+            self.assertEqual(state.read_bytes(), original)
+
+    def test_entrypoint_executes_persisted_runtime_in_bench_environment(self):
+        state = self.root / "runtime/service-state.json"
+        state.parent.mkdir()
+        state.write_text('{"protocol":3,"activeVersion":"0.1.3"}')
+        runtime = self.root / "runtime/versions/0.1.3/t3"
+        runtime.parent.mkdir(parents=True)
+        runtime.write_text("fixture")
+        runtime.chmod(0o755)
+        bench = self.root / "bench"
+        (bench / "env/bin").mkdir(parents=True)
+        (bench / "env/bin/python").touch()
+        (self.root / "devcontainer").mkdir()
+        ready = self.root / "ready"
+        ready.touch()
+        with (
+            patch.dict(
+                os.environ,
+                {"FRAPPE_DEV_AGENTS": "1", "FRAPPE_BENCH_NAME": str(bench)},
+            ),
+            patch.object(ENTRYPOINT.os, "chdir") as chdir,
+            patch.object(ENTRYPOINT.os, "dup2"),
+            patch.object(ENTRYPOINT.os, "umask"),
+            patch.object(ENTRYPOINT.os, "execv") as execute,
+        ):
+            ENTRYPOINT.main(ready_file=ready)
+            self.assertEqual(os.environ["VIRTUAL_ENV"], str(bench / "env"))
+            self.assertEqual(
+                os.environ["PATH"].split(os.pathsep)[0], str(bench / "env/bin")
+            )
+        chdir.assert_called_once_with(bench)
+        execute.assert_called_once_with(runtime, [str(runtime), "__service-launcher"])
+        self.assertEqual(
+            (self.root / "devcontainer/server.log").stat().st_mode & 0o777, 0o600
+        )
 
 
 if __name__ == "__main__":
