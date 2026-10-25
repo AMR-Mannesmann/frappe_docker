@@ -2,9 +2,6 @@
 services:
   frappe:
     init: true
-    restart: unless-stopped
-    stop_grace_period: 90s
-    command: ["python", "/usr/local/share/frappe-devcontainer/t3-entrypoint.py"]
     environment:
       FRAPPE_DEV_AGENTS: "1"
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
@@ -26,12 +23,6 @@ services:
       - github-cli-data:/home/frappe/.config/gh
       - gitlab-cli-data:/home/frappe/.config/glab-cli
       - ../.agent-data:/home/frappe/.agents
-      - type: bind
-        source: ./t3-entrypoint.py
-        target: /usr/local/share/frappe-devcontainer/t3-entrypoint.py
-        read_only: true
-        bind:
-          create_host_path: false
       - type: bind
         source: ${FRAPPE_T3_SETTINGS_FILE:-./t3-settings.json}
         target: /run/frappe-t3-settings.json

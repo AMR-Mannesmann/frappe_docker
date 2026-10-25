@@ -94,15 +94,15 @@ The creation hook configures internal ports `8000` and `9000`, including the web
 
 The npm packages use current releases, without version pins. T3 defaults to the stable `latest` npm channel. Set `FRAPPE_T3_CHANNEL=nightly` in `.devcontainer/.env` to bootstrap a new environment with `t3@nightly`. Creation resolves the current CLI release and completes its native-runtime download. Once initialized, the persistent T3 launcher state selects the running server version; recreation preserves that selection, including updates applied through T3. The CLI version can differ from the running server version.
 
-`postStartCommand` contains T3's runtime initialization and repair, compatibility checks, settings import, readiness check and project registration. It preserves existing launcher state and signals that provisioning is complete before waiting for the managed server. Bench and npm installation remain in `postCreateCommand`.
+`postStartCommand` owns T3 startup: runtime initialization and repair, compatibility checks, settings import, launching the native managed launcher, readiness and project registration. Bench and npm installation remain in `postCreateCommand`.
 
-The small foreground entrypoint waits for that signal, activates the Bench's Python environment, reads the persisted runtime selection and replaces itself with T3's native managed launcher. These startup steps must also run during ordinary Docker restarts, which do not invoke Dev Container lifecycle hooks. Docker supervises the launcher with an init process and an `unless-stopped` restart policy. T3 stays available when the setup terminal closes, and Docker restarts it if the launcher fails.
+The hook activates the Bench's Python environment and starts T3's native managed launcher in a detached session. It redirects output to a private log so the launcher stays available after the lifecycle terminal closes. A lifetime file lock prevents repeated hooks from starting another launcher for the same T3 home. The container keeps the stock `sleep infinity` command; no custom entrypoint is required.
 
-The launcher inherits the Compose service environment and activates the selected Bench's virtual environment. Configure server environment variables through Compose or T3's `service.env`; editor-only `remoteEnv` settings do not configure the container's foreground process.
+The launcher inherits the start hook's environment, including the selected Bench's virtual environment. Configure shared server environment variables through Compose.
 
 After the managed server is ready, the hook registers the Bench with `t3 project add`. An already-registered project, including a title changed in T3, is retained. A pending T3 update is recovered before any project command opens its database. Attachment waits for managed-server readiness and project registration.
 
-Use Dev Containers for initial creation and recreation so the installation hooks run. Once a container has been provisioned, ordinary Docker stop/start or restart also starts its launcher again. A per-container readiness marker prevents a newly recreated container from starting T3 before its tools and corporate CA setup are ready.
+Use Dev Containers to start, reopen and recreate environments so their lifecycle hooks run. Setup completes before the start hook launches T3, including any corporate CA configuration. Docker auto-restart is intentionally disabled; the supported startup path is the VS Code Dev Containers extension or `devcontainer up`. When reopening an already running environment, the existing launcher is reused.
 
 ### Update T3 from a connected client
 
@@ -151,7 +151,7 @@ The printed link uses the container's address and port. Replace its origin with 
 
 T3 startup output is stored in `/home/frappe/.t3/devcontainer/server.log` with private file permissions. It can contain pairing credentials; read it only in your own terminal when connecting a client.
 
-To restart the managed launcher, restart the devcontainer. Use T3's client controls to update its running server. Recreate the container to reinstall the other tools; its persistent T3 state and selected server version are retained.
+Use T3's client controls to update its running server. To restart the managed launcher, stop the environment and reopen it through Dev Containers. Recreate the container to reinstall the other tools; its persistent T3 state and selected server version are retained.
 
 ## Authenticate Codex
 
