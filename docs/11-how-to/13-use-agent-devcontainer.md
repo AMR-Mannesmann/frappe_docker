@@ -90,11 +90,23 @@ The generated constraints file keeps pre-commit's installation from replacing de
 
 The creation hook configures internal ports `8000` and `9000`, including the web command's port argument in the Procfile. Other Procfile entries are retained. The site advertises the published realtime port to the browser, keeping realtime connections working when parallel stacks use different host ports.
 
-The npm packages use current releases, without version pins. T3 defaults to the stable `latest` npm channel. Set `FRAPPE_T3_CHANNEL=nightly` in `.devcontainer/.env` to install `t3@nightly` instead. Each new container resolves the current release on the selected channel and installs it automatically. Recreate the container to apply a channel change. The version check also completes T3's first native-runtime download before the startup hook's readiness deadline.
+The npm packages use current releases, without version pins. T3 defaults to the stable `latest` npm channel. Set `FRAPPE_T3_CHANNEL=nightly` in `.devcontainer/.env` to bootstrap a new environment with `t3@nightly`. Creation resolves the current CLI release and completes its native-runtime download. Once initialized, the persistent T3 launcher state selects the running server version; recreation preserves that selection, including updates applied through T3. The CLI version can differ from the running server version.
 
-`postStartCommand` enters the configured Bench, activates its Python environment, registers the Bench with `t3 project add`, and runs `t3 serve`. An already-registered project is retained. The commands run in their own session with `nohup` and `setsid`, using `flock` to keep one server for this environment. This lets the server keep running when the setup terminal closes. Native project registration and headless serving also handle stale runtime records after container recreation. Agents inherit the Bench environment, including pre-commit. The hook waits for runtime metadata and the HTTP endpoint before completing.
+`postStartCommand` prepares T3's persistent state and signals that provisioning is complete. The container's foreground entrypoint then runs T3's native managed launcher with the Bench's Python environment, including pre-commit. Docker supervises that process with an init process and an `unless-stopped` restart policy. T3 stays available when the setup terminal closes, and Docker restarts it if the launcher fails.
 
-Use Dev Containers to create and resume the environment. Plain `docker compose up` or `docker restart` does not execute Dev Container lifecycle hooks.
+The launcher inherits the Compose service environment and activates the selected Bench's virtual environment. Configure server environment variables through Compose or T3's `service.env`; editor-only `remoteEnv` settings do not configure the container's foreground process.
+
+After the managed server is ready, the hook registers the Bench with `t3 project add`. An already-registered project, including a title changed in T3, is retained. A pending T3 update is recovered before any project command opens its database. Attachment waits for managed-server readiness and project registration.
+
+Use Dev Containers for initial creation and recreation so the installation hooks run. Once a container has been provisioned, ordinary Docker stop/start or restart also starts its launcher again. A per-container readiness marker prevents a newly recreated container from starting T3 before its tools and corporate CA setup are ready.
+
+### Update T3 from a connected client
+
+Use T3's **Update server** or **Update everything at once** action. T3 downloads the target runtime, restarts its server through the managed launcher, and rolls back a failed candidate. The container and the Bench installation are retained. Updates can interrupt agent turns and terminal commands; T3's continuation setting controls supported agent resumption.
+
+The launcher owns `~/.t3/runtime/service-state.json`. Keep the complete `t3-data` volume: it includes the selected runtime, update-recovery state, projects, sessions and secrets. Startup preserves this file rather than resetting it to the npm package version. Runtime caches missing from the volume are restored through npm using the selected version.
+
+This integration uses T3's internal `__service-launcher` entrypoint and launcher protocol 3. It runs T3's native compatibility preflight before initialization and startup, and rejects incompatible state without replacing it. If a future T3 release changes that interface, update the devcontainer integration while retaining its state volume. The foreground entrypoint only handles T3 lifecycle; Bench and npm installation remain in `devcontainer.json`.
 
 ## Frappe agent skills
 
@@ -112,6 +124,7 @@ After installation, the skills are available to the agent on its next turn. Thei
 devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version && gh --version && glab --version'
 devcontainer exec --workspace-folder . sh -c '"/workspace/development/$FRAPPE_BENCH_NAME/env/bin/pre-commit" --version'
 devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3773/
+devcontainer exec --workspace-folder . python /usr/local/share/frappe-devcontainer/t3-entrypoint.py status
 ```
 
 T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory and uses the Compose project name, such as `frappe-dev-a`, as its initial title. Existing project titles are retained on subsequent starts, including any name you choose in T3. You can add individual application projects as well. Project registration and settings persist with the environment.
@@ -134,7 +147,7 @@ The printed link uses the container's address and port. Replace its origin with 
 
 T3 startup output is stored in `/home/frappe/.t3/devcontainer/server.log` with private file permissions. It can contain pairing credentials; read it only in your own terminal when connecting a client.
 
-To restart T3, restart the devcontainer through Dev Containers. To reinstall or update the npm tools, recreate the container; its persistent data is retained.
+To restart the managed launcher, restart the devcontainer. Use T3's client controls to update its running server. Recreate the container to reinstall the other tools; its persistent T3 state and selected server version are retained.
 
 ## Authenticate Codex
 
@@ -168,7 +181,7 @@ New stacks can automatically start with your local T3 preferences. Configure the
 
 No changes to `devcontainer.json` are needed. If the variable is unset, the template uses `.devcontainer/t3-settings.json`, which contains `{}` and leaves T3's defaults in place. You can also put shared preferences in that file and keep it in your own development configuration.
 
-The startup hook reads that file through a read-only mount and imports its preferences before T3 creates the project or starts the server. Defaults for models, provider options, source-control writing, and thread behavior come from the local environment rather than T3's built-in defaults. Reuse this configured `.devcontainer` for subsequent stacks; each new stack reads the current local preferences automatically.
+The startup hook reads that file through a read-only mount and imports its preferences before T3 starts. Defaults for models, provider options, source-control writing, and thread behavior come from the local environment rather than T3's built-in defaults. Reuse this configured `.devcontainer` for subsequent stacks; each new stack reads the current local preferences automatically.
 
 Per-project overrides, host directories, device hosts, external integration settings, and sensitive provider environment variables are omitted. Provider executable and home-directory overrides are reset to use the container's own tools and authentication. T3's secret store and CLI login files are not copied. Custom provider commands and launch arguments must still work inside the container; seeding does not install additional providers. Appearance and other device preferences stay with the T3 client you are already using.
 
