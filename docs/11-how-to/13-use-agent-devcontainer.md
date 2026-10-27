@@ -138,7 +138,9 @@ devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --outp
 devcontainer exec --workspace-folder . python -c 'import json, urllib.request; d = json.load(urllib.request.urlopen("http://127.0.0.1:3773/.well-known/t3/environment", timeout=5)); print(d["serverVersion"], d["capabilities"]["serverSelfUpdate"])'
 ```
 
-T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory and uses the Compose project name, such as `task-a_devcontainer`, as its initial title. Existing project titles are retained on subsequent starts, including any name you choose in T3. You can add individual application projects as well. Project registration and settings persist with the environment.
+The Bench container's hostname is the Compose project name, such as `task-a_devcontainer`, giving T3 a readable environment label. Recreate an existing container through Dev Containers to apply the hostname; retain its Compose project name and volumes to keep its T3 identity, pairing and history.
+
+T3 starts with `/workspace/development/<FRAPPE_BENCH_NAME>` as its project directory and uses the Compose project name as its initial project title. Existing project titles are retained on subsequent starts, including any name you choose in T3. You can add individual application projects as well. Project registration and settings persist with the environment.
 
 To rename an already-registered Bench project without recreating it or its threads:
 

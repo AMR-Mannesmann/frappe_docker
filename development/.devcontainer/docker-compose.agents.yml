@@ -2,6 +2,7 @@
 services:
   frappe:
     init: true
+    hostname: ${COMPOSE_PROJECT_NAME}
     environment:
       FRAPPE_DEV_AGENTS: "1"
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
