@@ -282,11 +282,19 @@ Sample `apps-example.json` is used by default, it installs erpnext on current st
 python installer.py  #pass --db-type postgres for postgresdb
 ```
 
+New Benches use `bench init --dev` by default, enabling developer mode and installing the applications' declared Python development dependencies. To create a Bench without that flag, run:
+
+```shell
+python installer.py --no-dev
+```
+
+These options apply when creating a Bench. Existing Benches retain their apps, dependencies and developer-mode setting. Before reusing one, the installer checks its Frappe checkout, Python executable, common site configuration and Frappe registration. An incomplete Bench stops setup with a repair message instead of being reinitialized.
+
 For command help
 
 ```shell
 python installer.py --help
-usage: installer.py [-h] [-j APPS_JSON] [-b BENCH_NAME] [-s SITE_NAME] [-r FRAPPE_REPO] [-t FRAPPE_BRANCH] [-p PY_VERSION] [-n NODE_VERSION] [-v] [-a ADMIN_PASSWORD] [-d DB_TYPE]
+usage: installer.py [-h] [-j APPS_JSON] [-b BENCH_NAME] [-s SITE_NAME] [-r FRAPPE_REPO] [-t FRAPPE_BRANCH] [-p PY_VERSION] [-n NODE_VERSION] [-v] [--no-dev] [-a ADMIN_PASSWORD] [-d DB_TYPE]
 
 options:
   -h, --help            show this help message and exit
@@ -299,12 +307,13 @@ options:
   -r FRAPPE_REPO, --frappe-repo FRAPPE_REPO
                         frappe repo to use, default: https://github.com/frappe/frappe
   -t FRAPPE_BRANCH, --frappe-branch FRAPPE_BRANCH
-                        frappe repo to use, default: version-15
+                        frappe repo to use, default: version-16
   -p PY_VERSION, --py-version PY_VERSION
                         python version, default: Not Set
   -n NODE_VERSION, --node-version NODE_VERSION
                         node version, default: Not Set
   -v, --verbose         verbose output
+  --no-dev              Skip developer mode and development dependencies when creating a Bench
   -a ADMIN_PASSWORD, --admin-password ADMIN_PASSWORD
                         admin password for site, default: admin
   -d DB_TYPE, --db-type DB_TYPE

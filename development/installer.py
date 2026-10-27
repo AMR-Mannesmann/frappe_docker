@@ -2,7 +2,9 @@
 import argparse
 import json
 import os
+import shlex
 import subprocess
+from pathlib import Path
 
 
 def cprint(*args, level: int = 1):
@@ -99,6 +101,13 @@ def get_args_parser():
         help="verbose output",  # noqa: E501
     )
     parser.add_argument(
+        "--no-dev",
+        action="store_false",
+        dest="dev",
+        default=True,
+        help="Skip developer mode and development dependencies when creating a Bench",
+    )
+    parser.add_argument(
         "-a",
         "--admin-password",
         action="store",
@@ -117,26 +126,51 @@ def get_args_parser():
     return parser
 
 
+def validate_existing_bench(bench_name):
+    bench = Path(bench_name)
+    try:
+        if not (bench / "apps/frappe/frappe/__init__.py").is_file():
+            raise ValueError("Frappe checkout is missing")
+        python = bench / "env/bin/python"
+        if not python.is_file() or not os.access(python, os.X_OK):
+            raise ValueError("Bench Python executable is missing or unusable")
+        config = json.loads((bench / "sites/common_site_config.json").read_text())
+        if not isinstance(config, dict):
+            raise ValueError("common_site_config.json must contain a JSON object")
+        if "frappe" not in (bench / "sites/apps.txt").read_text().splitlines():
+            raise ValueError("Frappe is not registered in sites/apps.txt")
+    except (OSError, ValueError) as error:
+        raise RuntimeError(
+            f"Existing path {bench_name} is not a complete Bench: {error}. "
+            "Repair the existing Bench before rerunning the installer."
+        ) from error
+
+
 def init_bench_if_not_exist(args):
-    if os.path.exists(args.bench_name):
+    if os.path.lexists(args.bench_name):
+        validate_existing_bench(args.bench_name)
         cprint("Bench already exists. Only site will be created", level=3)
         return
     try:
         env = os.environ.copy()
         if args.py_version:
             env["PYENV_VERSION"] = args.py_version
-        init_command = ""
+        init_args = ["bench", "init", "--skip-redis-config-generation"]
+        if args.dev:
+            init_args.append("--dev")
+        if args.verbose:
+            init_args.append("--verbose")
+        init_args.extend(
+            [
+                f"--frappe-path={args.frappe_repo}",
+                f"--frappe-branch={args.frappe_branch}",
+                f"--apps_path={args.apps_json}",
+                args.bench_name,
+            ]
+        )
+        init_command = shlex.join(init_args)
         if args.node_version:
-            init_command = f"nvm use {args.node_version};"
-        if args.py_version:
-            init_command += f"PYENV_VERSION={args.py_version} "
-        init_command += "bench init "
-        init_command += "--skip-redis-config-generation "
-        init_command += "--verbose " if args.verbose else " "
-        init_command += f"--frappe-path={args.frappe_repo} "
-        init_command += f"--frappe-branch={args.frappe_branch} "
-        init_command += f"--apps_path={args.apps_json} "
-        init_command += args.bench_name
+            init_command = f"nvm use {shlex.quote(args.node_version)} && {init_command}"
         command = [
             "/bin/bash",
             "-i",
@@ -187,11 +221,6 @@ def init_bench_if_not_exist(args):
                 "redis_socketio",
                 "redis://redis-queue:6379",
             ],
-            cwd=os.getcwd() + "/" + args.bench_name,
-        )
-        cprint("Set developer_mode", level=3)
-        subprocess.check_call(
-            ["bench", "set-config", "-gp", "developer_mode", "1"],
             cwd=os.getcwd() + "/" + args.bench_name,
         )
     except subprocess.CalledProcessError:

@@ -37,6 +37,7 @@ The steps below include choosing the apps, names and ports for your stack in `.d
    FRAPPE_APPS_JSON=apps.json
    FRAPPE_BENCH_NAME=my-bench
    FRAPPE_SITE_NAME=my-app.localhost
+   FRAPPE_BENCH_DEV=1
    ```
 
    Dev Containers derives the Compose project name from the copied folder: `task-a` becomes `task-a_devcontainer`. No `COMPOSE_PROJECT_NAME` entry is needed. Use unique lowercase folder names containing letters, digits, dashes or underscores, beginning with a letter or digit. Keep the folder name and T3 port stable for an existing environment to retain its volumes and connection address.
@@ -69,7 +70,11 @@ The ordered setup commands are in `development/.devcontainer/devcontainer.json` 
 
 ```sh
 cd /workspace/development
-python installer.py --apps-json "$FRAPPE_APPS_JSON" --bench-name "$FRAPPE_BENCH_NAME" --site-name "$FRAPPE_SITE_NAME"
+installer_args=()
+if [ "${FRAPPE_BENCH_DEV:-1}" = 0 ]; then
+  installer_args+=(--no-dev)
+fi
+python installer.py --apps-json "$FRAPPE_APPS_JSON" --bench-name "$FRAPPE_BENCH_NAME" --site-name "$FRAPPE_SITE_NAME" "${installer_args[@]}"
 cd "$FRAPPE_BENCH_NAME"
 bench set-config -gp webserver_port 8000
 bench set-config -gp socketio_port 9000
@@ -87,6 +92,8 @@ npx --yes skills add https://github.com/frappe/frappe-ui/tree/main/skills/frappe
 ```
 
 When omitted from `.env`, the three installer settings default to `apps-example.json`, `frappe-bench`, and `development.localhost`. Existing Bench and site directories are retained on recreation. Before reusing a site, the installer checks its database through `bench list-apps` and requires the Bench's applications to be installed. An unusable database, missing applications, or a failed installer command stops the hook before the tool installations; repair an incomplete site before retrying.
+
+New Benches also use `bench init --dev` by default, enabling developer mode and installing the apps' declared Python development dependencies. Set `FRAPPE_BENCH_DEV=0` in `.devcontainer/.env` before creation to omit that flag. Existing Benches retain their dependencies and developer-mode setting. The installer validates their essential files and configuration before reuse and stops with a repair message if they are incomplete.
 
 The generated constraints file keeps pre-commit's installation from replacing dependencies already installed for Frappe and your apps. It is regenerated from the selected Bench, and the dependency check must pass before npm runs.
 
@@ -208,11 +215,12 @@ Replace `gitlab.example.com` with your GitLab hostname. CLI configuration and fi
 
 Step 2 above covers the manual `.env` edits for your stack. The Compose overlay passes these values into the container and the lifecycle hook passes them to the existing installer:
 
-| Setting             | Installer argument | Default                 |
-| ------------------- | ------------------ | ----------------------- |
-| `FRAPPE_APPS_JSON`  | `--apps-json`      | `apps-example.json`     |
-| `FRAPPE_BENCH_NAME` | `--bench-name`     | `frappe-bench`          |
-| `FRAPPE_SITE_NAME`  | `--site-name`      | `development.localhost` |
+| Setting             | Installer argument  | Default                 |
+| ------------------- | ------------------- | ----------------------- |
+| `FRAPPE_APPS_JSON`  | `--apps-json`       | `apps-example.json`     |
+| `FRAPPE_BENCH_NAME` | `--bench-name`      | `frappe-bench`          |
+| `FRAPPE_SITE_NAME`  | `--site-name`       | `development.localhost` |
+| `FRAPPE_BENCH_DEV`  | `--no-dev` when `0` | `1` (use Bench `--dev`) |
 
 Keep the Bench name relative to `/workspace/development`. Its value is used by both lifecycle hooks, so changing it does not require editing their directory paths. Other installer options, such as `--frappe-branch` or `--db-type`, can still be added directly to the installer command in `postCreateCommand`.
 
