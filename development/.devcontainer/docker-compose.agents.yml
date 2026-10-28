@@ -17,6 +17,7 @@ services:
       T3CODE_HOME: /home/frappe/.t3
       T3CODE_HOST: 0.0.0.0
       T3CODE_PORT: "3773"
+      T3CODE_SERVER_BROWSER_SANDBOX: ${FRAPPE_T3_BROWSER_SANDBOX:-0}
       GH_CONFIG_DIR: /home/frappe/.config/gh
       GLAB_CONFIG_DIR: /home/frappe/.config/glab-cli
     volumes:

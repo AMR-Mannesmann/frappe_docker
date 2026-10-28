@@ -84,7 +84,13 @@ uv pip freeze --python env/bin/python --exclude-editable > env/pre-commit-constr
 uv pip install --python env/bin/python --constraint env/pre-commit-constraints.txt pre-commit
 uv pip check --python env/bin/python
 sudo apt-get update
-sudo apt-get install --yes --no-install-recommends gh glab
+sudo apt-get install --yes --no-install-recommends \
+  gh glab fontconfig fonts-liberation \
+  libnss3 libglib2.0-0t64 libatk1.0-0t64 \
+  libatk-bridge2.0-0t64 libatspi2.0-0t64 libdbus-1-3 \
+  libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 \
+  libxfixes3 libxrandr2 libxkbcommon0 libgbm1 \
+  libasound2t64 libexpat1
 npm install --global @openai/codex "t3@${FRAPPE_T3_CHANNEL:-latest}"
 t3 --version
 npx --yes skills add frappe/skills --global --agent codex --skill '*' --yes --copy
@@ -118,6 +124,16 @@ Use T3's **Update server** or **Update everything at once** action. T3 downloads
 The launcher owns `~/.t3/runtime/service-state.json`. Keep the complete `t3-data` volume: it includes the selected runtime, update-recovery state, projects, sessions and secrets. Startup preserves this file rather than resetting it to the npm package version. The lifecycle hook restores missing runtime caches through npm using the selected version. If a cache is removed from an already provisioned container, recreate that container through Dev Containers so its hooks can restore it.
 
 This integration uses T3's internal `__service-launcher` entrypoint and launcher protocol 3. The lifecycle hook runs T3's native compatibility preflight before preparing a fresh container; pending updates are recovered by the native launcher before project registration. Unsupported state is retained for repair. If a future T3 release changes that interface, update the devcontainer integration while retaining its state volume.
+
+## Shared browser for UI checks
+
+The creation hook installs T3's headless Chrome library dependencies and system fonts for the Debian 13 Bench image. This includes the ATK accessibility bridge (`libatk-bridge-2.0.so.0`), so agents can use T3's shared browser for UI checks. T3 downloads its managed browser on first use into `$T3CODE_HOME/tools/chrome-headless-shell`; the existing `t3-data` volume retains that download and the browser profiles across recreation.
+
+Chrome's own sandbox requires user namespaces that Docker's default security profile blocks. The agent profile therefore defaults `FRAPPE_T3_BROWSER_SANDBOX=0`, passed to T3 as `T3CODE_SERVER_BROWSER_SANDBOX=0`. Chrome runs without its own sandbox inside the container's Docker isolation. Set this option to `1` if your Docker runtime supports sandboxed Chrome. See [T3's browser host setup](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#browser-host-setup) for the upstream behavior.
+
+The shared browser runs inside the Bench container. After starting Bench, navigate to `http://<FRAPPE_SITE_NAME>:8000`, using the container's web port even when the host publishes a different port, such as `8001` or `8002`. For example, a site named `agent.localhost` is available to that environment's browser at `http://agent.localhost:8000`.
+
+For an existing environment, update its copied creation hook, agent Compose overlay and `.env` from the template while retaining private overrides, then recreate it through Dev Containers. The library installation and browser setting are applied automatically, and the persistent T3 home retains browser data and authentication.
 
 ## Frappe agent skills
 
