@@ -1,0 +1,29 @@
+#!/bin/bash
+set +x
+set -e
+
+# Keep the local site's credentials out of unrelated shells and processes.
+# Explicit profiles and environment credentials retain upstream behavior.
+local_site=1
+for argument in "$@"; do
+	case "$argument" in
+	--) break ;;
+	-s | -s?* | --site | --site=*) local_site=0 ;;
+	esac
+done
+
+if [ "$local_site" = 1 ] && [ -z "${FRAPPE_SITE+x}${FRAPPE_API_KEY+x}${FRAPPE_API_SECRET+x}" ]; then
+	credentials="/workspace/development/$FRAPPE_BENCH_NAME/sites/$FRAPPE_SITE_NAME/.frappectl.env"
+	if [ -r "$credentials" ]; then
+		set -a
+		# shellcheck disable=SC1090
+		. "$credentials"
+		set +a
+		export NO_PROXY="${NO_PROXY:+$NO_PROXY,}$FRAPPE_SITE_NAME,localhost,127.0.0.1,::1"
+		export no_proxy="${no_proxy:+$no_proxy,}$FRAPPE_SITE_NAME,localhost,127.0.0.1,::1"
+	fi
+fi
+
+# Keep self-updates from replacing this credential loader with uv's symlinks.
+export UV_TOOL_BIN_DIR="$HOME/.local/lib/frappectl/bin"
+exec "$UV_TOOL_BIN_DIR/frappectl" "$@"

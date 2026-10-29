@@ -4,7 +4,7 @@ title: Use Agent Tools in a Devcontainer
 
 # Use T3 Code and Codex in the development container
 
-The development template installs T3 Code, Codex, GitHub CLI (`gh`), GitLab CLI (`glab`), and the Frappe/Frappe UI agent skills through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
+The development template installs T3 Code, Codex, Frappe CLI (`frappectl`), GitHub CLI (`gh`), GitLab CLI (`glab`), and the Frappe/Frappe UI agent skills through Dev Container lifecycle hooks using the existing Bench image. No custom image build is required. T3 runs inside the same container as Bench, so its agents can use the development environment directly.
 
 You need Docker Compose and either the VS Code Dev Containers extension or the [Dev Container CLI](https://code.visualstudio.com/docs/devcontainers/devcontainer-cli). Start from the repository root to copy the template, then run subsequent commands from your copied environment directory. The creation hook runs the existing installer for Bench, applications and site creation. See the [development setup](../05-development/01-development.md) for the installer options.
 
@@ -66,7 +66,7 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    These are Docker-published ports and work with the CLI and T3. `forwardPorts` in `devcontainer.json` provides additional VS Code forwarding; it is not a replacement for Docker publishing when using the CLI alone.
 
-The ordered setup commands are in `development/.devcontainer/devcontainer.json` in the source template, or `.devcontainer/devcontainer.json` in a copied environment. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment, the GitHub/GitLab CLIs from the image's Debian package repositories, and the npm tools:
+The ordered setup commands are in `development/.devcontainer/devcontainer.json` in the source template, or `.devcontainer/devcontainer.json` in a copied environment. `postCreateCommand` runs the existing installer first, then installs pre-commit into that Bench's Python environment, frappectl in an isolated tool environment, the GitHub/GitLab CLIs from the image's Debian package repositories, and the npm tools. The main installation commands are:
 
 ```sh
 cd /workspace/development
@@ -83,6 +83,7 @@ bench --site "$FRAPPE_SITE_NAME" set-config -p socketio_port "$FRAPPE_REALTIME_P
 uv pip freeze --python env/bin/python --exclude-editable > env/pre-commit-constraints.txt
 uv pip install --python env/bin/python --constraint env/pre-commit-constraints.txt pre-commit
 uv pip check --python env/bin/python
+UV_TOOL_BIN_DIR="$HOME/.local/lib/frappectl/bin" uv tool install frappectl
 sudo apt-get update
 sudo apt-get install --yes --no-install-recommends \
   gh glab fontconfig fonts-liberation \
@@ -135,6 +136,31 @@ The shared browser runs inside the Bench container. After starting Bench, naviga
 
 For an existing environment, update its copied creation hook, agent Compose overlay and `.env` from the template while retaining private overrides, then recreate it through Dev Containers. The library installation and browser setting are applied automatically, and the persistent T3 home retains browser data and authentication.
 
+## Frappe CLI for site interaction
+
+[frappectl](https://github.com/frappe/frappectl) is a REST API v2 client for Frappe v16+. The creation hook installs it without a version pin using `uv tool install`, separately from the Bench's Python dependencies. Both `frappectl` and its short alias `fr` are available in terminals and noninteractive agent commands.
+
+After starting Bench, use it directly without an additional login:
+
+```sh
+devcontainer exec --workspace-folder . frappectl auth whoami
+devcontainer exec --workspace-folder . frappectl guide
+devcontainer exec --workspace-folder . frappectl doctype show ToDo --json
+devcontainer exec --workspace-folder . frappectl doc list ToDo -f status=Open --json
+```
+
+The default target is this environment's `http://<FRAPPE_SITE_NAME>:8000`. The Compose overlay maps the site hostname to loopback inside the container, so each parallel stack reaches its own site regardless of its published host port. Use a `.localhost` site name, as recommended by the installer; frappectl permits plain HTTP credentials for localhost addresses. Setup does not start the web server: use `bench start` as described above.
+
+For this local development site, the hook creates an Administrator API key and secret if missing, reuses existing credentials without rotating them, and writes a private `0600` file at `<bench>/sites/<site>/.frappectl.env`. That file persists with the site in the mounted workspace. An existing secret that cannot be decrypted stops setup for repair. This provides full local development access; use separate credentials when testing another user's permissions.
+
+The small `.devcontainer/frappectl` command wrapper supplies these credentials only to the CLI process. They are not placed in the Compose `.env`, global shell environment, or agent instructions, and no desktop keyring is required. Explicit `-s/--site` profiles or supplied `FRAPPE_SITE`, `FRAPPE_API_KEY`, and `FRAPPE_API_SECRET` retain upstream behavior and bypass the automatic credentials. `FRAPPE_READ_ONLY=1 frappectl ...` also works for read-only exploration. Keep the private site file out of logs and source control.
+
+Installation alone does not tell an agent which tool to use. The hook installs the short guidance in `.devcontainer/agent-instructions.md` as a managed section of `$CODEX_HOME/AGENTS.md`, or the existing `AGENTS.override.md` when present. It retains instructions outside that section. Codex reads these global instructions for new sessions, including individual app projects; the guidance points it to `frappectl guide` for site data and API checks, Bench/Python for development operations, and the browser for UI checks. See [Codex instruction discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+
+Already-running sessions may need a new session to load the guidance; they can use `frappectl guide` immediately after installation. Other agent harnesses can reuse the provided Markdown in their own instruction configuration.
+
+For an existing environment, update its copied creation hook and agent Compose overlay, copy the `frappectl` and `agent-instructions.md` files into its `.devcontainer/`, then recreate it through Dev Containers while retaining private overrides and volumes. Recreation reinstalls the tool and reuses the site's credentials.
+
 ## Frappe agent skills
 
 Setup automatically installs all skills from [frappe/skills](https://github.com/frappe/skills) and the [Frappe UI skill](https://github.com/frappe/frappe-ui/tree/main/skills/frappe-ui) for Codex. This includes framework development, Frappe code review, code style, technical writing, UI design, and the repository's explicitly invoked workflows.
@@ -148,7 +174,7 @@ After installation, the skills are available to the agent on its next turn. Thei
 ## Check the environment
 
 ```sh
-devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version && gh --version && glab --version'
+devcontainer exec --workspace-folder . sh -c 'bench --version && codex --version && t3 --version && frappectl --version && gh --version && glab --version'
 devcontainer exec --workspace-folder . sh -c '"/workspace/development/$FRAPPE_BENCH_NAME/env/bin/pre-commit" --version'
 devcontainer exec --workspace-folder . curl --noproxy '*' --fail --silent --output /dev/null http://127.0.0.1:3773/
 devcontainer exec --workspace-folder . python -c 'import json, urllib.request; d = json.load(urllib.request.urlopen("http://127.0.0.1:3773/.well-known/t3/environment", timeout=5)); print(d["serverVersion"], d["capabilities"]["serverSelfUpdate"])'

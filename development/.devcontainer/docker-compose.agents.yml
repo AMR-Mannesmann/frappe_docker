@@ -3,6 +3,8 @@ services:
   frappe:
     init: true
     hostname: ${COMPOSE_PROJECT_NAME}
+    extra_hosts:
+      - "${FRAPPE_SITE_NAME:-development.localhost}:127.0.0.1"
     environment:
       FRAPPE_DEV_AGENTS: "1"
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
