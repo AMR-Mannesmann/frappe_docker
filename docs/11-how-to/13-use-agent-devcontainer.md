@@ -12,7 +12,7 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
 The complete template lives in `development/`, including its `.devcontainer/` configuration, installer and apps example. Copy that directory once for each environment. Copies also work outside this repository; no files from the original checkout are mounted or required at runtime. Keep `development/` as the clean template and create Benches in the copies.
 
-The template already includes the agent Compose configuration and waits for T3 startup. No JSON edits are needed to enable the workflow. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. Start Bench to serve the created site, as shown in step 4.
+The template already includes the agent Compose configuration and waits for T3 and Bench startup. No JSON edits are needed to enable the workflow. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. The site is served automatically after setup.
 
 The steps below include choosing the apps, names and ports for your stack in `.devcontainer/.env`. If your network requires a corporate CA, apply the configuration under [Customize the setup](#customize-the-setup) before the first container creation.
 
@@ -54,13 +54,15 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    In VS Code, open the copied environment folder, then use **Dev Containers: Reopen in Container** for a new environment or **Dev Containers: Rebuild Container** when updating an existing one. Reopening an existing container alone does not apply new volumes, environment, and published ports.
 
-4. Start Frappe from a host terminal in the copied environment directory:
+4. Open the created site:
+
+   Bench starts automatically on creation and each subsequent Dev Container start. Its Procfile runs the web server, realtime server, workers, scheduler and asset watcher. You do not need to keep a terminal running or start it manually after recreation.
+
+   To inspect startup output from a host terminal in the copied environment directory:
 
    ```sh
-   devcontainer exec --workspace-folder . bash -lc 'cd "/workspace/development/$FRAPPE_BENCH_NAME" && bench start'
+   devcontainer exec --workspace-folder . bash -lc 'tail -n 80 "/workspace/development/$FRAPPE_BENCH_NAME/logs/devcontainer-bench.log"'
    ```
-
-   Leave this command running while using the site. In a T3 terminal already at the Bench root, run `bench start` directly. Creation initializes the site; this command starts its web server, realtime server, workers, scheduler and asset watcher. Run it again after recreating or restarting the container.
 
    Open `http://<FRAPPE_SITE_NAME>:<FRAPPE_HTTP_PORT>`. The defaults use [http://development.localhost:8000](http://development.localhost:8000); the sample `.env` above uses `http://my-app.localhost:8000`. Use the site's `.localhost` hostname so Frappe selects the correct site. Sign in as `Administrator` with the installer password (`admin` by default).
 
@@ -108,7 +110,9 @@ The creation hook configures internal ports `8000` and `9000`, including the web
 
 The npm packages use current releases, without version pins. T3 defaults to the stable `latest` npm channel. Set `FRAPPE_T3_CHANNEL=nightly` in `.devcontainer/.env` to bootstrap a new environment with `t3@nightly`. Creation resolves the current CLI release and completes its native-runtime download. Once initialized, the persistent T3 launcher state selects the running server version; recreation preserves that selection, including updates applied through T3. The CLI version can differ from the running server version.
 
-`postStartCommand` owns T3 startup: runtime initialization and repair, compatibility checks, settings import, launching the native managed launcher, readiness and project registration. Bench and npm installation remain in `postCreateCommand`.
+`postStartCommand` owns T3 startup: runtime initialization and repair, compatibility checks, settings import, launching the native managed launcher, readiness and project registration. It then starts Bench and waits for its internal web and realtime ports. Bench and npm installation remain in `postCreateCommand`.
+
+Bench runs in a detached session with output in `<bench>/logs/devcontainer-bench.log`, so it survives the lifecycle hook's terminal closing. Repeated hooks reuse a matching Honcho process in the selected Bench directory, including one started manually. A reused manual process keeps its original terminal or log output until the next startup. Readiness follows the web and realtime ports in `sites/common_site_config.json`. Startup checks are serialized with an advisory lock; no persisted PID is trusted after recreation. An occupied web or realtime port without that process is reported as a conflict. Failed startup stops only a process launched by the hook and reports the log path; T3 remains available for debugging. This starts Bench on container startup; it does not supervise or automatically restart a later crash.
 
 The hook activates the Bench's Python environment and starts T3's native managed launcher in a detached session. It redirects output to a private log so the launcher stays available after the lifecycle terminal closes. A lifetime file lock prevents repeated hooks from starting another launcher for the same T3 home. The container keeps the stock `sleep infinity` command; no custom entrypoint is required.
 
@@ -132,7 +136,7 @@ The creation hook installs T3's headless Chrome library dependencies and system 
 
 Chrome's own sandbox requires user namespaces that Docker's default security profile blocks. The agent profile therefore defaults `FRAPPE_T3_BROWSER_SANDBOX=0`, passed to T3 as `T3CODE_SERVER_BROWSER_SANDBOX=0`. Chrome runs without its own sandbox inside the container's Docker isolation. Set this option to `1` if your Docker runtime supports sandboxed Chrome. See [T3's browser host setup](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#browser-host-setup) for the upstream behavior.
 
-The shared browser runs inside the Bench container. After starting Bench, navigate to `http://<FRAPPE_SITE_NAME>:8000`, using the container's web port even when the host publishes a different port, such as `8001` or `8002`. For example, a site named `agent.localhost` is available to that environment's browser at `http://agent.localhost:8000`.
+The shared browser runs inside the Bench container. Once setup finishes, navigate to `http://<FRAPPE_SITE_NAME>:8000`, using the container's web port even when the host publishes a different port, such as `8001` or `8002`. For example, a site named `agent.localhost` is available to that environment's browser at `http://agent.localhost:8000`.
 
 For an existing environment, update its copied creation hook, agent Compose overlay and `.env` from the template while retaining private overrides, then recreate it through Dev Containers. The library installation and browser setting are applied automatically, and the persistent T3 home retains browser data and authentication.
 
@@ -140,7 +144,7 @@ For an existing environment, update its copied creation hook, agent Compose over
 
 [frappectl](https://github.com/frappe/frappectl) is a REST API v2 client for Frappe v16+. The creation hook installs it without a version pin using `uv tool install`, separately from the Bench's Python dependencies. Both `frappectl` and its short alias `fr` are available in terminals and noninteractive agent commands.
 
-After starting Bench, use it directly without an additional login:
+Once setup finishes, use it directly without an additional login:
 
 ```sh
 devcontainer exec --workspace-folder . frappectl auth whoami
@@ -149,7 +153,7 @@ devcontainer exec --workspace-folder . frappectl doctype show ToDo --json
 devcontainer exec --workspace-folder . frappectl doc list ToDo -f status=Open --json
 ```
 
-The default target is this environment's `http://<FRAPPE_SITE_NAME>:8000`. The Compose overlay maps the site hostname to loopback inside the container, so each parallel stack reaches its own site regardless of its published host port. Use a `.localhost` site name, as recommended by the installer; frappectl permits plain HTTP credentials for localhost addresses. Setup does not start the web server: use `bench start` as described above.
+The default target is this environment's `http://<FRAPPE_SITE_NAME>:8000`. The Compose overlay maps the site hostname to loopback inside the container, so each parallel stack reaches its own site regardless of its published host port. Use a `.localhost` site name, as recommended by the installer; frappectl permits plain HTTP credentials for localhost addresses. The startup hook serves the site automatically.
 
 For this local development site, the hook creates an Administrator API key and secret if missing, reuses existing credentials without rotating them, and writes a private `0600` file at `<bench>/sites/<site>/.frappectl.env`. That file persists with the site in the mounted workspace. An existing secret that cannot be decrypted stops setup for repair. This provides full local development access; use separate credentials when testing another user's permissions.
 

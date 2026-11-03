@@ -9,7 +9,7 @@ frappectl doctype show ToDo --json
 frappectl doc list ToDo -f status=Open --json
 ```
 
-Its site URL is `http://$FRAPPE_SITE_NAME:8000`, using the container port. It requires the web server: run `bench start` from `/workspace/development/$FRAPPE_BENCH_NAME` when needed, checking first whether it is already running. Use the same URL in the shared browser to check the UI. `frappectl auth whoami` confirms the target and user; the guide's OAuth login advice is for additional sites, since local access is already configured.
+Its site URL is `http://$FRAPPE_SITE_NAME:8000`, using the container port. The Dev Container startup hook automatically runs `bench start`, including web, realtime, workers, scheduler and asset watcher. Do not start a second instance. If the site is unavailable, check the existing processes and `/workspace/development/$FRAPPE_BENCH_NAME/logs/devcontainer-bench.log` before restarting it. Use the same URL in the shared browser to check the UI. `frappectl auth whoami` confirms the target and user; the guide's OAuth login advice is for additional sites, since local access is already configured.
 
 Use Bench and its Python environment for migrations, tests, debugging internals, and complex setup. Administrator access does not demonstrate that another user's permissions work; use explicit credentials or a named CLI profile for those checks. `frappectl -s <profile>` and explicitly supplied `FRAPPE_SITE`, `FRAPPE_API_KEY`, and `FRAPPE_API_SECRET` bypass the automatic local credentials.
 
