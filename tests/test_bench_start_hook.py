@@ -3,12 +3,13 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import types
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 CONFIG = (
     Path(__file__).resolve().parents[1] / "development/.devcontainer/devcontainer.json"
@@ -104,11 +105,34 @@ class BenchStartupTests(unittest.TestCase):
             patch.object(MODULE, "listening", return_value=False),
             patch.object(MODULE.subprocess, "Popen") as launch,
         ):
-            launch.return_value.poll.return_value = None
+            writer, manager = Mock(), Mock()
+            manager.poll.return_value = None
+            launch.side_effect = [writer, manager]
             with self.assertRaisesRegex(RuntimeError, "did not become ready"):
                 MODULE.start_bench(self.bench, timeout=0)
-        launch.return_value.send_signal.assert_called_once_with(signal.SIGTERM)
-        launch.return_value.wait.assert_called_once_with(timeout=10)
+        manager.send_signal.assert_called_once_with(signal.SIGTERM)
+        manager.wait.assert_called_once_with(timeout=10)
+        writer.stdin.close.assert_called_once()
+        writer.wait.assert_called_once_with(timeout=5)
+
+    def test_log_rotation_bounds_old_and_new_output_and_preserves_latest_text(self):
+        path = self.root / "bench.log"
+        limit = MODULE.BENCH_LOG_BYTES
+        path.write_bytes(b"old data\n" * limit)
+        tail = "latest output π\n"
+        data = ("live output π\n" * 700000 + tail).encode()
+        subprocess.run(
+            [sys.executable, "-c", MODULE.BENCH_LOG_PUMP, str(path), str(limit), "2"],
+            input=data,
+            check=True,
+            timeout=15,
+        )
+        files = sorted(self.root.glob("bench.log*"))
+        self.assertEqual(len(files), 3)
+        # UTF-8 chunk boundaries can put a file at most one chunk over its limit.
+        self.assertLessEqual(sum(p.stat().st_size for p in files), 3 * (limit + 8192))
+        self.assertTrue(path.read_text().endswith(tail))
+        self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600 for p in files))
 
     def test_simultaneous_starts_launch_one_detached_manager_and_reuse_it(self):
         # A small stand-in exercises real locks, process discovery and sockets.
@@ -174,7 +198,9 @@ class BenchStartupTests(unittest.TestCase):
                 ]
                 pids = [future.result(timeout=15) for future in futures]
             self.assertEqual(pids[0], pids[1])
-            self.assertEqual(len(launched), 1)
+            self.assertEqual(
+                len(launched), 2
+            )  # One manager and its bounded log writer.
             self.assertEqual(os.getsid(pids[0]), pids[0])
             self.assertEqual((self.bench / "starts").read_text(), "start\n")
             self.assertEqual(MODULE.start_bench(self.bench, 10, ports), pids[0])

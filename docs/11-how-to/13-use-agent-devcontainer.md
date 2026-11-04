@@ -58,10 +58,16 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    Bench starts automatically on creation and each subsequent Dev Container start. Its Procfile runs the web server, realtime server, workers, scheduler and asset watcher. You do not need to keep a terminal running or start it manually after recreation.
 
-   To inspect startup output from a host terminal in the copied environment directory:
+   To follow live output, open a T3 terminal at the Bench root and run:
 
    ```sh
-   devcontainer exec --workspace-folder . bash -lc 'tail -n 80 "/workspace/development/$FRAPPE_BENCH_NAME/logs/devcontainer-bench.log"'
+   tail -n 100 -F logs/devcontainer-bench.log
+   ```
+
+   The automatically started Bench runs in the background; it does not create a T3 terminal tab. Closing the terminal or pressing Ctrl+C stops this log viewer while Bench continues running. From a host terminal in the copied environment directory, use:
+
+   ```sh
+   devcontainer exec --workspace-folder . bash -lc 'tail -n 100 -F "/workspace/development/$FRAPPE_BENCH_NAME/logs/devcontainer-bench.log"'
    ```
 
    Open `http://<FRAPPE_SITE_NAME>:<FRAPPE_HTTP_PORT>`. The defaults use [http://development.localhost:8000](http://development.localhost:8000); the sample `.env` above uses `http://my-app.localhost:8000`. Use the site's `.localhost` hostname so Frappe selects the correct site. Sign in as `Administrator` with the installer password (`admin` by default).
@@ -112,7 +118,9 @@ The npm packages use current releases, without version pins. T3 defaults to the 
 
 `postStartCommand` owns T3 startup: runtime initialization and repair, compatibility checks, settings import, launching the native managed launcher, readiness and project registration. It then starts Bench and waits for its internal web and realtime ports. Bench and npm installation remain in `postCreateCommand`.
 
-Bench runs in a detached session with output in `<bench>/logs/devcontainer-bench.log`, so it survives the lifecycle hook's terminal closing. Repeated hooks reuse a matching Honcho process in the selected Bench directory, including one started manually. A reused manual process keeps its original terminal or log output until the next startup. Readiness follows the web and realtime ports in `sites/common_site_config.json`. Startup checks are serialized with an advisory lock; no persisted PID is trusted after recreation. An occupied web or realtime port without that process is reported as a conflict. Failed startup stops only a process launched by the hook and reports the log path; T3 remains available for debugging. This starts Bench on container startup; it does not supervise or automatically restart a later crash.
+Bench runs in a detached session with output in `<bench>/logs/devcontainer-bench.log`, so it survives the lifecycle hook's terminal closing. A small detached writer rotates this aggregate output at 2 MiB and retains two older files (`.1` and `.2`), keeping roughly 6 MiB in total. Existing oversized files are trimmed on startup. This limit applies to the additional startup log; Frappe's own application and worker logs keep their existing behavior. `tail -F` follows the current file across rotation.
+
+Repeated hooks reuse a matching Honcho process in the selected Bench directory, including one started manually. A reused manual process keeps its original terminal or log output until the next startup. Readiness follows the web and realtime ports in `sites/common_site_config.json`. Startup checks are serialized with an advisory lock; no persisted PID is trusted after recreation. An occupied web or realtime port without that process is reported as a conflict. Failed startup stops only a process launched by the hook and reports the log path; T3 remains available for debugging. This starts Bench on container startup; it does not supervise or automatically restart a later crash.
 
 The hook activates the Bench's Python environment and starts T3's native managed launcher in a detached session. It redirects output to a private log so the launcher stays available after the lifecycle terminal closes. A lifetime file lock prevents repeated hooks from starting another launcher for the same T3 home. The container keeps the stock `sleep infinity` command; no custom entrypoint is required.
 
@@ -297,5 +305,7 @@ Keep your environment directory and database volume as well. Removing volumes, r
 Copying the template creates an independent environment; it does not move an existing Bench, database or T3 history. Existing devcontainers can continue using their current configuration. Do not copy an initialized environment over `development/`; its generated Bench and agent data would then be copied into every new environment.
 
 Changes to `development/.devcontainer/` apply to future copies. To update an existing environment, apply the relevant configuration changes to its own `.devcontainer/`, retain its private overrides and settings, then recreate it from that environment directory.
+
+Lifecycle hook changes also require recreation. Dev Containers saves the hook commands in the container's `devcontainer.metadata` label at creation; editing `postStartCommand` and stopping/starting the same container leaves its saved hook unchanged. Use **Dev Containers: Rebuild Container** or `devcontainer up --workspace-folder . --remove-existing-container` after updating hooks. Starting the new command manually once does not apply it to future starts of the old container.
 
 When deliberately migrating an older layout, preserve the entire Bench, agent data, database and T3 volumes, keep the container Bench path unchanged, and explicitly retain its original `COMPOSE_PROJECT_NAME` in `.devcontainer/.env`. This prevents the new folder-derived name from selecting fresh volumes. Moving the source template alone does not migrate running environments.
