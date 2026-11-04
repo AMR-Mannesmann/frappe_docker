@@ -58,7 +58,9 @@ The steps below include choosing the apps, names and ports for your stack in `.d
 
    Bench starts automatically on creation and each subsequent Dev Container start. Its Procfile runs the web server, realtime server, workers, scheduler and asset watcher. You do not need to keep a terminal running or start it manually after recreation.
 
-   To follow live output, open a T3 terminal at the Bench root and run:
+   Choose **Bench logs** from T3's project actions to open a terminal following the live output. The startup hook adds this action to the environment's defaults and any explicit project action lists, preserving other actions and customized viewers. Its absolute log path also works when your selected project is an individual app.
+
+   You can also open a T3 terminal at the Bench root and run:
 
    ```sh
    tail -n 100 -F logs/devcontainer-bench.log

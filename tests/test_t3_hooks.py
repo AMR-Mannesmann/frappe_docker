@@ -148,7 +148,70 @@ class T3HookTests(unittest.TestCase):
         bootstrap.assert_not_called()
         runtime.assert_called_once_with("0.1.3", preflight=True)
         self.assertEqual(state.read_bytes(), original)
-        self.assertEqual(destination.read_bytes(), preferences)
+        settings = json.loads(destination.read_text())
+        self.assertEqual(settings["branchNamePrefix"], "keep-existing")
+        self.assertEqual(settings["defaultProjectScripts"][0]["name"], "Bench logs")
+
+    def test_log_action_preserves_other_actions_and_project_preferences(self):
+        path = self.root / "userdata/settings.json"
+        path.parent.mkdir()
+        existing = {"id": "custom", "name": "My action", "command": "echo custom"}
+        settings = {
+            "branchNamePrefix": "mine",
+            "defaultProjectScripts": [existing],
+            "projectSettingsOverrides": {
+                "custom-project": {
+                    "defaultProjectScripts": [existing],
+                    "defaultThreadEnvMode": "local",
+                },
+                "inherited-project": {"defaultThreadEnvMode": "worktree"},
+            },
+            "projectScriptOverrides": {"legacy": [existing], "inherit": None},
+        }
+        path.write_text(json.dumps(settings))
+        self.lifecycle.ensure_bench_log_action()
+        result = json.loads(path.read_text())
+        self.assertEqual(result["branchNamePrefix"], "mine")
+        self.assertEqual(result["defaultProjectScripts"][0], existing)
+        self.assertEqual(len(result["defaultProjectScripts"]), 2)
+        self.assertEqual(
+            len(
+                result["projectSettingsOverrides"]["custom-project"][
+                    "defaultProjectScripts"
+                ]
+            ),
+            2,
+        )
+        self.assertEqual(
+            result["projectSettingsOverrides"]["custom-project"][
+                "defaultThreadEnvMode"
+            ],
+            "local",
+        )
+        self.assertEqual(
+            result["projectSettingsOverrides"]["inherited-project"],
+            settings["projectSettingsOverrides"]["inherited-project"],
+        )
+        self.assertEqual(len(result["projectScriptOverrides"]["legacy"]), 2)
+        self.assertIsNone(result["projectScriptOverrides"]["inherit"])
+
+    def test_log_action_is_idempotent_and_retains_customized_command(self):
+        self.lifecycle.ensure_bench_log_action()
+        path = self.root / "userdata/settings.json"
+        settings = json.loads(path.read_text())
+        settings["defaultProjectScripts"][0]["command"] = "echo my log viewer"
+        path.write_text(json.dumps(settings))
+        original = path.read_bytes()
+        self.lifecycle.ensure_bench_log_action()
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_existing_log_action_name_is_preserved(self):
+        path = self.root / "userdata/settings.json"
+        path.parent.mkdir()
+        original = '{"defaultProjectScripts":[{"id":"mine","name":"Bench logs","command":"custom"}]}'
+        path.write_text(original)
+        self.lifecycle.ensure_bench_log_action()
+        self.assertEqual(path.read_text(), original)
 
     def test_pending_update_defers_database_preflight_and_settings(self):
         state = self.root / "runtime/service-state.json"
