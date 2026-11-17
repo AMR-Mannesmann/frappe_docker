@@ -138,7 +138,7 @@ Use T3's **Update server** or **Update everything at once** action. T3 downloads
 
 The launcher owns `~/.t3/runtime/service-state.json`. Keep the complete `t3-data` volume: it includes the selected runtime, update-recovery state, projects, sessions and secrets. Startup preserves this file rather than resetting it to the npm package version. The lifecycle hook restores missing runtime caches through npm using the selected version. If a cache is removed from an already provisioned container, recreate that container through Dev Containers so its hooks can restore it.
 
-This integration uses T3's internal `__service-launcher` entrypoint and launcher protocol 3. The lifecycle hook runs T3's native compatibility preflight before preparing a fresh container; pending updates are recovered by the native launcher before project registration. Unsupported state is retained for repair. If a future T3 release changes that interface, update the devcontainer integration while retaining its state volume.
+This integration uses T3's internal `__service-launcher` entrypoint. For existing environments, the hook passes the protocol recorded in `service-state.json` to the selected runtime's native compatibility preflight, rather than rejecting a protocol migrated by T3's self-update. New state starts in the backward-compatible protocol-3 format; the native launcher owns later migrations, including protocol 4. Pending updates are recovered by the native launcher before project registration. Invalid state or a failed native preflight stops startup without resetting it. If a future T3 release changes the launcher interface, update the devcontainer integration while retaining its state volume.
 
 ## Shared browser for UI checks
 

@@ -60,7 +60,9 @@ class T3HookTests(unittest.TestCase):
         state.parent.mkdir()
         for value in (
             [],
-            {"protocol": 4, "activeVersion": "0.1.3"},
+            {"protocol": 0, "activeVersion": "0.1.3"},
+            {"protocol": True, "activeVersion": "0.1.3"},
+            {"protocol": "4", "activeVersion": "0.1.3"},
             {"protocol": 3, "activeVersion": "../../userdata"},
             {"protocol": 3, "activeVersion": "0.1.3", "update": None},
         ):
@@ -117,6 +119,54 @@ class T3HookTests(unittest.TestCase):
         bootstrap.assert_not_called()
         seed.assert_not_called()
         runtime.assert_called_once_with("0.1.3", preflight=False)
+        self.assertEqual(state.read_bytes(), original)
+
+    def test_migrated_protocol_4_is_used_for_native_preflight_without_rewriting_state(
+        self,
+    ):
+        version = "0.1.10-nightly.20261113.4630"
+        state = self.root / "runtime/service-state.json"
+        state.parent.mkdir()
+        original = json.dumps({"protocol": 4, "activeVersion": version}).encode()
+        state.write_bytes(original)
+        directory = self.root / "runtime/versions" / version
+        (directory / "client").mkdir(parents=True)
+        (directory / "client/index.html").write_text("fixture")
+        (directory / "resource-monitor").mkdir()
+        (directory / "node_modules").mkdir()
+        (directory / ".install-complete").write_text(version)
+        (directory / "t3").write_text("fixture")
+        (directory / "t3").chmod(0o755)
+        ready = types.SimpleNamespace(
+            stdout=json.dumps(
+                {"status": "ready", "version": version, "launcherProtocol": 4}
+            )
+        )
+        help_result = types.SimpleNamespace(stdout="__service-launcher")
+        with patch.object(
+            self.lifecycle, "command", side_effect=[ready, help_result]
+        ) as command:
+            self.assertEqual(self.lifecycle.prepare(), directory / "t3")
+        self.assertEqual(
+            command.call_args_list[0].args[0][-2:], ["--launcher-protocol", "4"]
+        )
+        self.assertEqual(state.read_bytes(), original)
+
+    def test_unknown_protocol_is_left_to_native_preflight_and_state_is_retained(self):
+        state = self.root / "runtime/service-state.json"
+        state.parent.mkdir()
+        original = b'{"protocol":99,"activeVersion":"0.1.3"}\n'
+        state.write_bytes(original)
+        self.lifecycle.read_state()
+        self.assertEqual(self.lifecycle.launcher_protocol, 99)
+        # The runtime compatibility check still fails closed before starting a launcher.
+        with patch.object(
+            self.lifecycle,
+            "runtime",
+            side_effect=MODULE.LifecycleError("Native preflight blocked startup"),
+        ):
+            with self.assertRaises(MODULE.LifecycleError):
+                self.lifecycle.prepare()
         self.assertEqual(state.read_bytes(), original)
 
     def test_launcher_lock_detects_the_running_owner_and_releases_the_probe(self):
@@ -217,7 +267,7 @@ class T3HookTests(unittest.TestCase):
         state = self.root / "runtime/service-state.json"
         state.parent.mkdir()
         original = (
-            b'{"protocol":3,"activeVersion":"0.1.2","update":{"status":"pending"}}\n'
+            b'{"protocol":4,"activeVersion":"0.1.2","update":{"status":"pending"}}\n'
         )
         state.write_bytes(original)
         with (
@@ -245,7 +295,7 @@ class T3HookTests(unittest.TestCase):
         )
 
         def recovered():
-            state.write_text(json.dumps({"protocol": 3, "activeVersion": "0.1.3"}))
+            state.write_text(json.dumps({"protocol": 4, "activeVersion": "0.1.3"}))
             return json.dumps(
                 {
                     "serverVersion": "0.1.3",
