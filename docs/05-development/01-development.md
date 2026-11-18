@@ -274,7 +274,7 @@ Most developers work with numerous clients and versions. Moreover, apps may be r
 
 This is simplified using a script to automate the process of creating a new bench / site and installing the required apps. The `Administrator` password for created sites is `admin`.
 
-Sample `apps-example.json` is used by default, it installs erpnext on current stable release. To install custom apps, copy the `apps-example.json` to custom json file and make changes to list of apps. Pass this file to the `installer.py` script.
+Sample `apps-example.json` is used by default; it installs ERPNext from `version-16` and Insights from `version-3`. To install custom apps, copy `apps-example.json` to a custom JSON file and change the list of apps. Pass this file to the `installer.py` script.
 
 > You may have apps in private repos which may require ssh access. You may use SSH from your home directory on linux (configurable in docker-compose.yml).
 

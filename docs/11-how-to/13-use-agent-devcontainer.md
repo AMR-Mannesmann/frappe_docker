@@ -12,7 +12,7 @@ You need Docker Compose and either the VS Code Dev Containers extension or the [
 
 The complete template lives in `development/`, including its `.devcontainer/` configuration, installer and apps example. Copy that directory once for each environment. Copies also work outside this repository; no files from the original checkout are mounted or required at runtime. Keep `development/` as the clean template and create Benches in the copies.
 
-The template already includes the agent Compose configuration and waits for T3 and Bench startup. No JSON edits are needed to enable the workflow. The defaults create `frappe-bench`, install the applications in `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. The site is served automatically after setup.
+The template already includes the agent Compose configuration and waits for T3 and Bench startup. No JSON edits are needed to enable the workflow. The defaults create `frappe-bench`, install ERPNext (`version-16`) and Insights (`version-3`) from `apps-example.json`, create `development.localhost`, and publish T3 on host port `3774`, Frappe web on `8000`, and realtime on `9000`. The site is served automatically after setup. Insights is available at `/insights` on that site.
 
 The steps below include choosing the apps, names and ports for your stack in `.devcontainer/.env`. If your network requires a corporate CA, apply the configuration under [Customize the setup](#customize-the-setup) before the first container creation.
 
