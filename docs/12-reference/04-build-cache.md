@@ -8,14 +8,14 @@ This page describes cache inputs and invalidation rules for `images/layered/Cont
 
 ## Cache invalidation
 
-Both Containerfiles mount `apps.json` as the `apps_json` build secret during `bench init`. [Docker excludes secret contents from cache keys](https://docs.docker.com/build/cache/invalidation/#build-secrets), so editing the file does not invalidate the cached application build step.
+Both Containerfiles mount `apps.json` as the `apps_json` build secret when fetching app sources. [Docker excludes secret contents from cache keys](https://docs.docker.com/build/cache/invalidation/#build-secrets), so editing the file does not invalidate the cached application build step.
 
-`CACHE_BUST` is a build argument, defaults to an empty string, and accepts an arbitrary string. The Containerfiles consume it in the same `RUN` instruction as `bench init`. Changing its value invalidates that step while earlier dependency layers remain eligible for reuse. The value is not interpreted as a timestamp, run ID, commit SHA, or hash; those are values computed by the caller's CI configuration.
+`CACHE_BUST` is a build argument, defaults to an empty string, and accepts an arbitrary string. The Containerfiles consume it in the same `RUN` instruction that fetches the apps. Changing its value invalidates that step while earlier dependency layers remain eligible for reuse. The value is not interpreted as a timestamp, run ID, commit SHA, or hash; those are values computed by the caller's CI configuration.
 
 | Change                                                   | Effect on the cached application build step                                                                         |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Change `CACHE_BUST`                                      | Invalidates the `bench init` step.                                                                                  |
-| Change `FRAPPE_BRANCH` or `FRAPPE_PATH`                  | Can invalidate the step because both arguments are used during bench initialization.                                |
+| Change `CACHE_BUST`                                      | Invalidates the source fetch step.                                                                                  |
+| Change `FRAPPE_BRANCH` or `FRAPPE_PATH`                  | Can invalidate the step because both arguments are used to fetch Frappe.                                            |
 | Change an earlier layer or the builder image digest      | Invalidates dependent layers. A moving builder image tag matters once the builder resolves its updated digest.      |
 | Change `apps.json` secret contents                       | Does not invalidate the step.                                                                                       |
 | Push commits to an unchanged remote Frappe or app branch | Does not invalidate the step. Remote repository contents are not checked when reusing the cached `RUN` instruction. |
@@ -24,6 +24,8 @@ Both Containerfiles mount `apps.json` as the `apps_json` build secret during `be
 These rules apply when a matching cache is available. `--no-cache` disables layer-cache reuse for the build.
 
 ## Cache import and export
+
+The stock production image uses a builder-local package cache for Python and Yarn downloads. Builds for the same target architecture can reuse these packages when app changes invalidate the assembly layer. A fresh builder starts with an empty package cache. BuildKit cache mounts are separate from exported layer caches.
 
 An ephemeral CI runner needs an imported cache to reuse work from an earlier run. Exporting cache makes that work available to later builds. Neither import nor export adds secret contents or remote branch updates to cache keys.
 
@@ -37,4 +39,4 @@ The repository's [app image workflow](https://github.com/frappe/frappe_docker/bl
 - `CACHE_BUST`: not passed to either build.
 - `app_ref`: used to generate the `apps.json` secret; it is not part of the cache scope.
 
-Changing only `app_ref` or the generated `apps.json` can therefore reuse older application sources when a matching cache is available. A new output image tag does not force `bench init` to run again.
+Changing only `app_ref` or the generated `apps.json` can therefore reuse older application sources when a matching cache is available. A new output image tag does not force the app sources to be fetched again.

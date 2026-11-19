@@ -96,7 +96,7 @@ function "tag" {
 target "default-args" {
     args = {
         FRAPPE_PATH = "${FRAPPE_REPO}"
-        ERPNEXT_PATH = "${ERPNEXT_REPO}"
+        ERPNEXT_REPO = "${ERPNEXT_REPO}"
         BENCH_REPO = "${BENCH_REPO}"
         FRAPPE_BRANCH = "${FRAPPE_VERSION}"
         ERPNEXT_BRANCH = "${ERPNEXT_VERSION}"

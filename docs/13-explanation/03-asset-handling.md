@@ -10,7 +10,9 @@ Production images keep built assets outside the `sites` volume and link them int
 
 ## At build time
 
-To keep built assets tied to the deployed image, the [production](https://github.com/frappe/frappe_docker/blob/main/images/production/Containerfile), [custom](https://github.com/frappe/frappe_docker/blob/main/images/custom/Containerfile), and [layered](https://github.com/frappe/frappe_docker/blob/main/images/layered/Containerfile) image definitions copy the asset tree out of `sites` and remove the original directory before declaring volumes:
+For the stock Frappe and ERPNext v16 image, the runtime copy leaves out the build tools for ERPNext Banking and Islands and for Frappe Flow and the framework Islands. Their compiled assets ship with the image. The app-root Node packages and Studio's publishing tools ship so those features can run in production.
+
+To keep built assets tied to the deployed image, the [production](https://github.com/frappe/frappe_docker/blob/main/images/production/Containerfile) builder moves the asset tree out of `sites` before copying the bench into the runtime image. The [custom](https://github.com/frappe/frappe_docker/blob/main/images/custom/Containerfile) and [layered](https://github.com/frappe/frappe_docker/blob/main/images/layered/Containerfile) images copy the asset tree out of `sites` and remove the original directory before declaring volumes:
 
 ```dockerfile
 RUN cp -r /home/frappe/frappe-bench/sites/assets /home/frappe/frappe-bench/assets && \
