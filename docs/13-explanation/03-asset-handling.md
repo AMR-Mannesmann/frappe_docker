@@ -23,12 +23,18 @@ The final image supplies the asset tree at `/home/frappe/frappe-bench/assets`, o
 
 This tree contains asset manifests such as `assets.json` and per-app symlinks. By default, [Frappe's asset builder](https://github.com/frappe/frappe/blob/version-16/frappe/build.py) links `sites/assets/frappe` to `/home/frappe/frappe-bench/apps/frappe/frappe/public`, and similarly for other apps with a `public` directory. The recursive copy preserves these links under `assets/`. The app's public directory, including its built `dist/` bundles, is also supplied by the image. These per-app links are separate from the `sites/assets` link created at container startup.
 
-### Reuse assets for stock v16 images
+### Prebuilt assets for stock v16 images
 
-The production image can reuse a bench asset archive from an earlier build. The
+The stock v16 build checks GitHub for the web files published for the exact
+Frappe and ERPNext commits it checked out. It verifies both downloads before
+installing them and builds the web files from source if either download is
+unavailable or unusable. Dependency installation and translation compilation
+are part of the build. The image retains the tools Studio uses to publish.
+
+The production image can also reuse a bench asset archive from an earlier build. The
 archive key includes both app commits, the platform, and the Python, Node.js, and
-Yarn versions. The image build still runs the normal dependency installs, including
-the tools Studio needs to publish at runtime.
+Yarn versions. If you supply a matching archive, the build uses it first. This
+also reuses the compiled translations.
 
 To export assets, run this from the repository root with the app versions you
 want to package. The export directory can live outside the build context.
@@ -51,9 +57,9 @@ docker buildx build -f images/production/Containerfile \
 
 Keep the archive and its checksum together. Use an archive from a trusted build
 because its files are served to users. If the checkout or toolchain changes and
-there is no matching archive, the image compiles assets from source. A matching
-archive with a bad checksum or invalid contents fails the build. This feature
-uses archives exported by the Docker builder.
+there is no matching archive, the image tries GitHub before compiling from
+source. A matching archive with a bad checksum or invalid contents fails the
+build. The named context accepts archives exported by the Docker builder.
 
 ## At container startup
 

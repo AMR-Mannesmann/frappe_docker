@@ -290,24 +290,56 @@ def assemble(args):
                     flush=True,
                 )
     write_json(states_path, states)
-    asset_input = args.asset_input and any(args.asset_input.glob("*.tar.gz"))
-    assets = None
-    if asset_input or args.asset_output:
-        stock_v16 = set(states) == {"frappe", "erpnext"} and all(
-            state["version"].startswith("16.") for state in states.values()
-        )
-        if not stock_v16 and args.asset_output:
-            raise ValueError(
-                "Exporting assets requires the stock Frappe and ERPNext v16 image"
-            )
-        if stock_v16:
-            from bench_assets import BenchAssets
+    build_assets(args, states)
 
-            assets = BenchAssets(bench, states, run)
 
+def build_assets(args, states):
+    bench = args.bench
+    python = bench / "env/bin/python"
     env = {**os.environ, "FRAPPE_DOCKER_BUILD": "1"}
-    if assets and asset_input and assets.restore(args.asset_input):
-        assets.link(python, run, env)
+    stock_v16 = set(states) == {"frappe", "erpnext"} and all(
+        state["version"].startswith("16.") for state in states.values()
+    )
+    asset_input = args.asset_input and any(args.asset_input.glob("*.tar.gz"))
+    if args.asset_output and not stock_v16:
+        raise ValueError(
+            "Exporting assets requires the stock Frappe and ERPNext v16 image"
+        )
+
+    assets = None
+    if stock_v16 and (asset_input or args.asset_output):
+        from bench_assets import BenchAssets
+
+        assets = BenchAssets(bench, states, run)
+
+    restored = assets and asset_input and assets.restore(args.asset_input)
+    translate = ()
+    if not restored and stock_v16 and args.github_assets:
+        official_repos = all(
+            run(
+                "git",
+                "config",
+                "--get",
+                "remote.upstream.url",
+                cwd=bench / "apps" / app,
+                capture=True,
+            )
+            .strip()
+            .rstrip("/")
+            .removesuffix(".git")
+            == f"https://github.com/frappe/{app}"
+            for app in states
+        )
+        if official_repos:
+            from github_assets import restore_github_assets
+
+            restored = restore_github_assets(bench, states)
+            translate = tuple(states)
+
+    if restored:
+        from bench_assets import finish_restored_assets
+
+        finish_restored_assets(bench, python, run, env, translate=translate)
     else:
         run(
             str(python),
@@ -317,7 +349,7 @@ def assemble(args):
             "build",
             "--force",
             "--production",
-            cwd=sites,
+            cwd=bench / "sites",
             env=env,
         )
     if assets and args.asset_output:
@@ -336,6 +368,7 @@ def main():
     fetch_command.add_argument("--resolve-dependencies", action="store_true")
     fetch_command.set_defaults(run=fetch)
     assemble_command = commands.add_parser("assemble")
+    assemble_command.add_argument("--github-assets", action="store_true")
     assemble_command.add_argument("--asset-input", type=Path)
     assemble_command.add_argument("--asset-output", type=Path)
     assemble_command.set_defaults(run=assemble)

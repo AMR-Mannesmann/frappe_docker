@@ -117,27 +117,34 @@ class BenchAssets:
             checksum.replace(target.with_suffix(".gz.sha256"))
         print(f"Saved prebuilt bench assets to {target.name}", flush=True)
 
-    def link(self, python, run, env):
-        # Studio runs a Vite build when users publish, even if its editor is prebuilt.
-        run(
-            "yarn",
-            "install",
-            "--frozen-lockfile",
-            cwd=self.bench / "apps/frappe/studio/frontend",
-        )
-        run(
-            str(python),
-            "-c",
-            "import frappe; from frappe.bundler import setup, make_asset_dirs; "
-            "frappe.init(''); setup(); make_asset_dirs()",
-            cwd=self.bench / "sites",
-            env=env,
-        )
-        for name in ("assets.json", "assets-rtl.json"):
-            urls = json.loads((self.bench / "sites/assets" / name).read_text())
-            for url in urls.values():
-                if (
-                    url.startswith("/assets/")
-                    and not (self.bench / "sites" / url[1:]).is_file()
-                ):
-                    raise ValueError(f"Restored asset could not be found: {url}")
+
+def finish_restored_assets(bench, python, run, env, *, translate=()):
+    # Studio runs a Vite build when users publish, even if its editor is prebuilt.
+    studio = bench / "apps/frappe/studio/frontend"
+    if (studio / "package.json").is_file():
+        run("yarn", "install", "--frozen-lockfile", cwd=studio)
+    run(
+        str(python),
+        "-c",
+        """import sys
+import frappe
+from frappe.bundler import setup, make_asset_dirs
+
+frappe.init("")
+setup()
+make_asset_dirs()
+
+if sys.argv[1:]:
+    from frappe.gettext.translate import compile_translations
+    for app in sys.argv[1:]:
+        compile_translations(app, force=True)
+""",
+        *translate,
+        cwd=bench / "sites",
+        env=env,
+    )
+    for name in ("assets.json", "assets-rtl.json"):
+        urls = json.loads((bench / "sites/assets" / name).read_text())
+        for url in urls.values():
+            if url.startswith("/assets/") and not (bench / "sites" / url[1:]).is_file():
+                raise ValueError(f"Restored asset could not be found: {url}")

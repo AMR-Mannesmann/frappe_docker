@@ -136,7 +136,7 @@ ARG FRAPPE_PATH=https://github.com/frappe/frappe
 ARG ERPNEXT_REPO=https://github.com/frappe/erpnext
 ARG ERPNEXT_BRANCH=version-16
 ARG EXPORT_BENCH_ASSETS
-COPY resources/core/build-bench.py resources/core/bench_assets.py /tmp/
+COPY resources/core/build-bench.py resources/core/bench_assets.py resources/core/github_assets.py /tmp/
 
 # Assemble the bench and trim stock v16 build tools before setting permissions.
 RUN --mount=type=cache,id=frappe-stock-packages-${TARGETARCH},target=/home/frappe/.cache,uid=1000,gid=0,sharing=locked \
@@ -145,7 +145,7 @@ RUN --mount=type=cache,id=frappe-stock-packages-${TARGETARCH},target=/home/frapp
   --app "${FRAPPE_PATH}" "${FRAPPE_BRANCH}" \
   --app "${ERPNEXT_REPO}" "${ERPNEXT_BRANCH}" && \
   UV_LINK_MODE=copy python3 /tmp/build-bench.py assemble \
-  --asset-input /tmp/prebuilt-assets ${EXPORT_BENCH_ASSETS:+--asset-output /tmp/bench-asset-export} && \
+  --github-assets --asset-input /tmp/prebuilt-assets ${EXPORT_BENCH_ASSETS:+--asset-output /tmp/bench-asset-export} && \
   cd /home/frappe/frappe-bench && \
   if [ "${FRAPPE_PATH%.git}" = "https://github.com/frappe/frappe" ] && \
     [ "${ERPNEXT_REPO%.git}" = "https://github.com/frappe/erpnext" ] && \
