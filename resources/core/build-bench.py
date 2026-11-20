@@ -290,17 +290,38 @@ def assemble(args):
                     flush=True,
                 )
     write_json(states_path, states)
-    run(
-        str(python),
-        "-m",
-        "frappe.utils.bench_helper",
-        "frappe",
-        "build",
-        "--force",
-        "--production",
-        cwd=sites,
-        env={**os.environ, "FRAPPE_DOCKER_BUILD": "1"},
-    )
+    asset_input = args.asset_input and any(args.asset_input.glob("*.tar.gz"))
+    assets = None
+    if asset_input or args.asset_output:
+        stock_v16 = set(states) == {"frappe", "erpnext"} and all(
+            state["version"].startswith("16.") for state in states.values()
+        )
+        if not stock_v16 and args.asset_output:
+            raise ValueError(
+                "Exporting assets requires the stock Frappe and ERPNext v16 image"
+            )
+        if stock_v16:
+            from bench_assets import BenchAssets
+
+            assets = BenchAssets(bench, states, run)
+
+    env = {**os.environ, "FRAPPE_DOCKER_BUILD": "1"}
+    if assets and asset_input and assets.restore(args.asset_input):
+        assets.link(python, run, env)
+    else:
+        run(
+            str(python),
+            "-m",
+            "frappe.utils.bench_helper",
+            "frappe",
+            "build",
+            "--force",
+            "--production",
+            cwd=sites,
+            env=env,
+        )
+    if assets and args.asset_output:
+        assets.save(args.asset_output)
 
 
 def main():
@@ -314,7 +335,10 @@ def main():
     fetch_command.add_argument("--apps-file", type=Path)
     fetch_command.add_argument("--resolve-dependencies", action="store_true")
     fetch_command.set_defaults(run=fetch)
-    commands.add_parser("assemble").set_defaults(run=assemble)
+    assemble_command = commands.add_parser("assemble")
+    assemble_command.add_argument("--asset-input", type=Path)
+    assemble_command.add_argument("--asset-output", type=Path)
+    assemble_command.set_defaults(run=assemble)
     args = parser.parse_args()
     args.bench = args.bench.resolve()
     try:

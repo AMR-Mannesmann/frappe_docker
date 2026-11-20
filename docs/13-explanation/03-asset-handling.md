@@ -23,6 +23,38 @@ The final image supplies the asset tree at `/home/frappe/frappe-bench/assets`, o
 
 This tree contains asset manifests such as `assets.json` and per-app symlinks. By default, [Frappe's asset builder](https://github.com/frappe/frappe/blob/version-16/frappe/build.py) links `sites/assets/frappe` to `/home/frappe/frappe-bench/apps/frappe/frappe/public`, and similarly for other apps with a `public` directory. The recursive copy preserves these links under `assets/`. The app's public directory, including its built `dist/` bundles, is also supplied by the image. These per-app links are separate from the `sites/assets` link created at container startup.
 
+### Reuse assets for stock v16 images
+
+The production image can reuse a bench asset archive from an earlier build. The
+archive key includes both app commits, the platform, and the Python, Node.js, and
+Yarn versions. The image build still runs the normal dependency installs, including
+the tools Studio needs to publish at runtime.
+
+To export assets, run this from the repository root with the app versions you
+want to package. The export directory can live outside the build context.
+
+```sh
+docker buildx build -f images/production/Containerfile \
+  --target bench-asset-export --build-arg EXPORT_BENCH_ASSETS=1 \
+  --build-arg FRAPPE_BRANCH=v16.60.0 --build-arg ERPNEXT_BRANCH=v16.60.0 \
+  --output type=local,dest=../bench-build-assets .
+```
+
+Pass that directory to the image build using a named context:
+
+```sh
+docker buildx build -f images/production/Containerfile \
+  --build-arg FRAPPE_BRANCH=v16.60.0 --build-arg ERPNEXT_BRANCH=v16.60.0 \
+  --build-context prebuilt-assets=../bench-build-assets \
+  --load -t frappe/erpnext:local .
+```
+
+Keep the archive and its checksum together. Use an archive from a trusted build
+because its files are served to users. If the checkout or toolchain changes and
+there is no matching archive, the image compiles assets from source. A matching
+archive with a bad checksum or invalid contents fails the build. This feature
+uses archives exported by the Docker builder.
+
 ## At container startup
 
 During container startup, the [main entrypoint](https://github.com/frappe/frappe_docker/blob/main/resources/core/main-entrypoint.sh) removes the existing `sites/assets` path, then creates a symlink from `/home/frappe/frappe-bench/sites/assets` to `/home/frappe/frappe-bench/assets` before executing the container command. A directory at `sites/assets` is removed with its contents; an existing symlink is unlinked without removing its target.
